@@ -31,6 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger("eval.benchmark")
 
 DATASET_PATH = "/inspire/qb-ilm2/project/26summer-camp-01/26210094/datasets/benchmark.csv"
+DEFAULT_GROUP = "7"
 
 
 def load_benchmark(path: str) -> list[dict]:

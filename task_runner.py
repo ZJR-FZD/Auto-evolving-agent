@@ -284,7 +284,12 @@ def run_task(
     # Build user message (optionally include image)
     if image_b64 and image_url:
         user_content = [
-            {"type": "text",      "text": instruction + "输入图像的在线链接：" + image_url},
+            {"type": "text",      "text": instruction + "\n输入图像的在线链接：" + image_url},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+        ]
+    elif image_b64:
+        user_content = [
+            {"type": "text",      "text": instruction},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
         ]
     else:
