@@ -6,6 +6,43 @@
 
 整体架构采用 **GPU 主机（无外网）+ CPU 主机（有外网）** 的分离部署模式，通过 SSH/VSCode 端口转发打通网络。
 
+## 比赛评测（快速开始）
+
+### 跑 Benchmark（比赛提交）
+
+```bash
+cd /inspire/qb-ilm2/project/26summer-camp-01/26210094/harness-sii
+
+# 跑全部 100 题（X 替换为你的组号）
+python run_benchmark.py --group X
+
+# 先跑前 3 题测试
+python run_benchmark.py --group X --start 0 --end 3
+
+# 指定输出目录
+python run_benchmark.py --group X -o my_results
+```
+
+**结果文件位置**（默认在 `results/` 目录下）：
+
+| 文件 | 说明 |
+|------|------|
+| `results/group_X.csv` | 答案文件（problem + image + answer 列） |
+| `results/group_X.json` | 推理轨迹文件（每题的完整 Agent 交互记录） |
+| `results/group_X.zip` | 提交用压缩包（包含上面两个文件） |
+| `results/group_X_progress.jsonl` | 进度文件（支持断点续跑） |
+| `trajectories/benchmark/bench_XXX.jsonl` | 每题的原始轨迹 |
+
+断点续跑：中断后重新运行同样的命令，已完成的题目会自动跳过。
+
+### 跑 SimpleVQA
+
+```bash
+python run_simpleqa.py --start 0 --end 99
+```
+
+结果在 `results/simpleqa_results.jsonl`，轨迹在 `trajectories/simpleqa/`。
+
 ## 架构图
 
 ```
