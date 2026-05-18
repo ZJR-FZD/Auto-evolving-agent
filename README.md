@@ -13,14 +13,14 @@
 ```bash
 cd /inspire/qb-ilm2/project/26summer-camp-01/26210094/harness-sii
 
-# 跑全部 100 题（X 替换为你的组号）
-python run_benchmark.py --group X
+# 跑全部 100 题
+python run_benchmark.py --group 7
 
 # 先跑前 3 题测试
-python run_benchmark.py --group X --start 0 --end 3
+python run_benchmark.py --group 7 --start 0 --end 3
 
 # 指定输出目录
-python run_benchmark.py --group X -o my_results
+python run_benchmark.py --group 7 -o my_results
 ```
 
 **结果文件位置**（默认在 `results/` 目录下）：
@@ -34,6 +34,27 @@ python run_benchmark.py --group X -o my_results
 | `trajectories/benchmark/bench_XXX.jsonl` | 每题的原始轨迹 |
 
 断点续跑：中断后重新运行同样的命令，已完成的题目会自动跳过。
+
+### Benchmark 数据集说明
+
+`datasets/benchmark.csv` 共 100 题，分为两部分：
+
+| 区间 | 类型 | 数量 | 说明 |
+|------|------|------|------|
+| index 0-49 | 纯文本 | 50 题 | 复杂多跳推理，需多次联网搜索拼凑答案 |
+| index 50-99 | 图片+文本 | 50 题 | 给一张图（base64），问与图中人物/事物相关的事实 |
+
+CSV 列：`problem`（问题）、`image`（base64 图片，纯文本题为空）、`answer`（待填）
+
+**纯文本题示例**（index 0-49）：
+> "This corporation manufactures powerboats... How many shares were still available for repurchase as of December 31, 2022?"
+
+特点：问题描述很长，包含多个约束条件，需要多步搜索定位到具体公司/人物，再查找精确数据。
+
+**图片题示例**（index 50-99）：
+> "What new products did the large model company managed by the person in the image launch in August 2024?"
+
+特点：先识别图中人物/logo/地图 → 再联网搜索相关事实。需要用到 `search_image`（反向图搜）确认图中内容身份，然后用 `search_text` 搜索具体答案。
 
 ### 跑 SimpleVQA
 
