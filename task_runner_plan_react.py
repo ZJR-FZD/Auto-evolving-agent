@@ -203,27 +203,61 @@ GARBAGE_DOMAINS = {
     "etsy.com", "thatpervert.com", "pinterest.com",
 }
 
-def filter_garbage_results(tool_result_str: str) -> str:
-    """Remove search results from known garbage domains."""
+LOW_SIGNAL_DOMAINS = {
+    "youtube.com", "youtu.be", "reddit.com", "x.com", "twitter.com",
+    "foxsports.com", "wfin.com", "tiktok.com", "instagram.com",
+}
+
+LOW_SIGNAL_PATTERNS = [
+    "403", "forbidden", "captcha", "access denied", "security verification",
+    "[jina-error]", "[proxy-error]", "just a moment...",
+]
+
+
+def _looks_low_signal_result(item: dict) -> bool:
+    """Heuristic check for result entries that are likely unusable/noisy."""
+    url = (item.get("url") or "").lower()
+    text_blob = " ".join([
+        str(item.get("title", "")),
+        str(item.get("snippet", "")),
+        str(item.get("content", "")),
+    ]).lower()
+    if not url:
+        return True
+    if any(domain in url for domain in LOW_SIGNAL_DOMAINS):
+        return True
+    if any(pat in text_blob for pat in LOW_SIGNAL_PATTERNS):
+        return True
+    return False
+
+
+def filter_garbage_results(tool_result_str: str) -> tuple[str, bool]:
+    """
+    Remove low-quality/noisy results and return `(filtered_json, has_signal)`.
+    """
     try:
         results = json.loads(tool_result_str)
         if not isinstance(results, list):
-            return tool_result_str
+            return tool_result_str, True
         filtered = []
         for r in results:
             url = r.get("url", "")
             if any(domain in url for domain in GARBAGE_DOMAINS):
                 continue
+            if _looks_low_signal_result(r):
+                continue
             filtered.append(r)
         if not filtered and results:
             return json.dumps(
                 [{"rank": 1, "title": "[HARNESS] All results were from blocked sites (Instagram/TikTok/etc). "
-                  "Your query is too vague or the info is not indexed. Try a COMPLETELY different query with different keywords.",
+                  "or low-signal sources (YouTube/Reddit/CAPTCHA/403). "
+                  "Your query is too vague or the info is not indexed. "
+                  "Try a COMPLETELY different query with different entities and constraints.",
                   "url": "", "snippet": "", "content": ""}],
-                ensure_ascii=False)
-        return json.dumps(filtered, ensure_ascii=False)
+                ensure_ascii=False), False
+        return json.dumps(filtered, ensure_ascii=False), True
     except (json.JSONDecodeError, TypeError):
-        return tool_result_str
+        return tool_result_str, True
 
 
 # Phrases that are clearly metaphorical/riddle-like and should NOT be searched literally
@@ -280,6 +314,13 @@ def extract_query_keywords(fn_args: dict) -> set:
     return words - stop_words
 
 
+def jaccard_similarity(a: set, b: set) -> float:
+    """Simple keyword overlap score for duplicate-query detection."""
+    if not a and not b:
+        return 1.0
+    return len(a & b) / max(len(a | b), 1)
+
+
 REFLECTION_PROMPT = (
     "[SYSTEM] You have used {steps} search steps. Review your progress:\n"
     "- If you found a strong candidate answer, output it now with <answer>...</answer>.\n"
@@ -295,6 +336,22 @@ DUPLICATE_QUERY_PROMPT = (
     "2. Think of a completely different angle to find the answer.\n"
     "3. Use different starting entities or facts in your next query.\n"
     "If you have any candidate answer at all, output it now with <answer>...</answer>."
+)
+
+LOW_SIGNAL_PIVOT_PROMPT = (
+    "[SYSTEM] Your recent search results were mostly low-signal (blocked/captcha/video/social/noise). "
+    "Immediately pivot to a new clue chain and use one highly constrained query format:\n"
+    "- include 2-3 hard facts from the question (years, counts, names, exact phrases);\n"
+    "- avoid generic terms like 'match', 'history', 'movie';\n"
+    "- avoid YouTube/Reddit-oriented wording;\n"
+    "- if a candidate entity appears, run exactly one confirmation query: "
+    "\"<candidate> + <another independent fact>\"."
+)
+
+DUPLICATE_QUERY_BLOCKED_MSG = (
+    '[{{"rank": 1, "title": "[HARNESS] Query blocked: too similar to your recent searches. '
+    'Use a different clue chain and different entities, not rewordings.", '
+    '"url": "", "snippet": "", "content": ""}}]'
 )
 
 # PLACEHOLDER_SYSTEM_PROMPT
@@ -425,6 +482,7 @@ def run_task(
     final_answer = ""
     force_answer_injected = False
     recent_queries = []  # Track recent search queries for dedup detection
+    low_signal_streak = 0
 
     for step in range(1, max_steps + 1):
         logger.info("--- step %d/%d ---", step, max_steps)
@@ -434,6 +492,11 @@ def run_task(
             reflection = REFLECTION_PROMPT.format(steps=step)
             traj.write(Role.USER, reflection, step_id=step)
             logger.info("Injected REFLECTION_PROMPT at step %d", step)
+
+        # --- Guardrail: if search quality is poor for consecutive rounds, force pivot ---
+        if low_signal_streak >= 2 and not force_answer_injected:
+            traj.write(Role.USER, LOW_SIGNAL_PIVOT_PROMPT, step_id=step)
+            logger.info("Injected LOW_SIGNAL_PIVOT_PROMPT at step %d", step)
 
         # --- Guardrail: detect duplicate queries ---
         if len(recent_queries) >= 3:
@@ -539,6 +602,22 @@ def run_task(
 
             logger.info("tool_call: %s(%s)", fn_name, fn_args)
 
+            # Search arg normalization for better recall/precision.
+            if fn_name == "search_text":
+                query = str(fn_args.get("query", "")).strip()
+                query = re.sub(r"\s+", " ", query)
+                fn_args["query"] = query
+                fn_args["top_k"] = max(int(fn_args.get("top_k", 5)), 5)
+                # Broad queries with fetch=True often pull noisy pages; fetch later only if needed.
+                if fn_args.get("fetch") and len(query.split()) < 6:
+                    fn_args["fetch"] = False
+
+                # Pre-call duplicate block to stop near-identical query loops.
+                kw = extract_query_keywords(fn_args)
+                if kw and any(jaccard_similarity(kw, prev) > 0.75 for prev in recent_queries[-5:]):
+                    logger.info("BLOCKED duplicate-like query: %s", query)
+                    return tc_id, fn_name, fn_args, DUPLICATE_QUERY_BLOCKED_MSG
+
             # --- Guardrail: block metaphor queries before execution ---
             if fn_name == "search_text" and is_metaphor_query(fn_args.get("query", "")):
                 logger.info("BLOCKED metaphor query: %s", fn_args.get("query", ""))
@@ -571,7 +650,11 @@ def run_task(
         for tc_id, fn_name, fn_args, tool_result in results:
             # --- Guardrail: filter garbage URLs from search results ---
             if fn_name == "search_text":
-                tool_result = filter_garbage_results(tool_result)
+                tool_result, has_signal = filter_garbage_results(tool_result)
+                if has_signal:
+                    low_signal_streak = 0
+                else:
+                    low_signal_streak += 1
                 # Track query keywords for dedup detection
                 kw = extract_query_keywords(fn_args)
                 if kw:
