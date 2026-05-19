@@ -235,6 +235,7 @@ MAX_TRIALS_PER_STATE = 3
 LOW_SIGNAL_PIVOT_THRESHOLD = 2
 QUERY_SIMILARITY_THRESHOLD = 0.70
 MIN_INDEPENDENT_SOURCES = 2
+CANDIDATE_STALE_THRESHOLD = 2
 
 STATE_INSTRUCTION = {
     "S0_PARSE": (
@@ -275,6 +276,11 @@ SEARCH_DEGRADED_PROMPT = (
     "Do NOT keep calling search_text repeatedly. "
     "Preferred fallback: use browser_navigate on one reliable source URL if available; "
     "otherwise conclude with <answer confidence=\"low\">...</answer>."
+)
+
+CANDIDATE_UNLOCK_PROMPT = (
+    "[SYSTEM] Candidate lock detected: your current candidate chain has shown no progress for multiple steps. "
+    "Drop the current candidate, pivot to a new entity, and use a fresh constrained query with 2-3 hard facts."
 )
 
 
@@ -839,6 +845,7 @@ def run_task(
     event_alignment = 0
     timeout_streak = 0
     search_degraded_mode = False
+    no_gain_streak = 0
 
     for step in range(1, max_steps + 1):
         logger.info("--- step %d/%d ---", step, max_steps)
@@ -957,7 +964,20 @@ def run_task(
         if not tool_calls and not content:
             continue
 
+        # Hard stop fallback: on final step, do not execute new tools.
+        if step == max_steps and tool_calls:
+            fallback = best_candidate or "Unable to determine from available evidence"
+            forced = f'<answer confidence="low">{fallback}</answer>'
+            traj.write(Role.ASSISTANT, forced, step_id=step)
+            final_answer = extract_answer(forced)
+            logger.info("Forced low-confidence completion at final step")
+            break
+
         tool_calls = _select_tool_calls_for_step(tool_calls, instruction, recent_queries)
+        prev_evidence_count = len(evidence_domains)
+        prev_alignment = event_alignment
+        prev_candidate_count = len(candidate_votes)
+        prev_best_vote = candidate_votes.get(best_candidate, 0) if best_candidate else 0
 
         # --- Execute tool calls (concurrently) ---
         def _exec_one_tool(tc):
@@ -1077,6 +1097,32 @@ def run_task(
             traj.write(Role.TOOL, tool_result, step_id=step, tool_call_id=tc_id,
                        extra={"fn_name": fn_name, "fn_args": fn_args})
 
+        # Detect progress; if stale for too long, unlock current candidate.
+        current_best_vote = candidate_votes.get(best_candidate, 0) if best_candidate else 0
+        progress_gained = (
+            len(evidence_domains) > prev_evidence_count
+            or event_alignment > prev_alignment
+            or len(candidate_votes) > prev_candidate_count
+            or current_best_vote > prev_best_vote
+        )
+        if progress_gained:
+            no_gain_streak = 0
+        else:
+            no_gain_streak += 1
+
+        if no_gain_streak >= CANDIDATE_STALE_THRESHOLD and best_candidate:
+            stale = best_candidate
+            candidate_votes.pop(stale, None)
+            candidate_domain_evidence.pop(stale, None)
+            if candidate_votes:
+                best_candidate = max(candidate_votes, key=lambda c: candidate_votes.get(c, 0))
+            else:
+                best_candidate = None
+            traj.write(Role.USER, CANDIDATE_UNLOCK_PROMPT, step_id=step)
+            logger.info("Unlocked stale candidate: %s", stale)
+            no_gain_streak = 0
+            low_signal_streak = LOW_SIGNAL_PIVOT_THRESHOLD
+
         # State transitions and failsafe controls.
         if current_state == "S0_PARSE":
             if recent_queries:
@@ -1118,7 +1164,8 @@ def run_task(
                 final_answer = extract_answer(e["content"])
                 break
         if not final_answer:
-            final_answer = "[HARNESS] Max steps reached without answer."
+            fallback = best_candidate or "Unable to determine from available evidence"
+            final_answer = f"[LOW_CONFIDENCE] {fallback}"
 
     summary = traj.summary()
     logger.info("Trajectory summary: %s", summary)
