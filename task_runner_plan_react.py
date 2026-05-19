@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import uuid
+from urllib.parse import urlparse
 from typing import Optional
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -203,6 +204,13 @@ GARBAGE_DOMAINS = {
     "etsy.com", "thatpervert.com", "pinterest.com",
 }
 
+ALLOWLIST_DOMAINS = {
+    "wikipedia.org", "wikidata.org",
+    "fifa.com", "uefa.com", "olympics.com", "ioc.org",
+    "bbc.com", "reuters.com", "apnews.com", "nytimes.com",
+    "theguardian.com", "espn.com",
+}
+
 LOW_SIGNAL_DOMAINS = {
     "youtube.com", "youtu.be", "reddit.com", "x.com", "twitter.com",
     "foxsports.com", "wfin.com", "tiktok.com", "instagram.com",
@@ -213,6 +221,63 @@ LOW_SIGNAL_PATTERNS = [
     "403", "forbidden", "captcha", "access denied", "security verification",
     "[jina-error]", "[proxy-error]", "just a moment...",
 ]
+
+STATE_SEQUENCE = ["S0_PARSE", "S1_SUBJECT", "S2_EVENT", "S3_DETAIL", "S4_DONE"]
+MAX_TRIALS_PER_STATE = 3
+LOW_SIGNAL_PIVOT_THRESHOLD = 2
+QUERY_SIMILARITY_THRESHOLD = 0.70
+MIN_INDEPENDENT_SOURCES = 2
+
+STATE_INSTRUCTION = {
+    "S0_PARSE": (
+        "[SYSTEM][STATE=S0_PARSE] Parse the question into searchable facts only.\n"
+        "- Extract hard facts (years, scores, minutes, proper nouns, event type).\n"
+        "- Ignore metaphorical/riddle language.\n"
+        "- Plan 2-3 clue chains; next query must use one chain with 2-3 facts."
+    ),
+    "S1_SUBJECT": (
+        "[SYSTEM][STATE=S1_SUBJECT] Identify the subject candidate.\n"
+        "- Use precise snippet search (fetch=false first).\n"
+        "- If 2 low-signal results happen, pivot to a different clue chain."
+    ),
+    "S2_EVENT": (
+        "[SYSTEM][STATE=S2_EVENT] Verify event alignment for the candidate.\n"
+        "- Run one independent confirmation query using another fact.\n"
+        "- Reject candidate if key constraints conflict."
+    ),
+    "S3_DETAIL": (
+        "[SYSTEM][STATE=S3_DETAIL] Extract the requested final detail.\n"
+        "- Verify with at least two independent sources when possible.\n"
+        "- Keep answer concise and exact."
+    ),
+}
+
+
+def _extract_domain(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        host = urlparse(url).netloc.lower()
+    except Exception:
+        return ""
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def _is_domain_match(domain: str, domain_set: set[str]) -> bool:
+    if not domain:
+        return False
+    return any(domain == d or domain.endswith(f".{d}") for d in domain_set)
+
+
+def _collect_domains_from_results(results: list[dict]) -> set[str]:
+    domains = set()
+    for item in results:
+        dom = _extract_domain(item.get("url", ""))
+        if dom:
+            domains.add(dom)
+    return domains
 
 
 def _looks_low_signal_result(item: dict) -> bool:
@@ -242,12 +307,14 @@ def filter_garbage_results(tool_result_str: str) -> tuple[str, bool]:
             return tool_result_str, True
         filtered = []
         for r in results:
-            url = r.get("url", "")
-            if any(domain in url for domain in GARBAGE_DOMAINS):
+            domain = _extract_domain(r.get("url", ""))
+            if _is_domain_match(domain, GARBAGE_DOMAINS):
                 continue
             if _looks_low_signal_result(r):
                 continue
             filtered.append(r)
+        filtered_domains = _collect_domains_from_results(filtered)
+        allowlist_hit = any(_is_domain_match(d, ALLOWLIST_DOMAINS) for d in filtered_domains)
         if not filtered and results:
             return json.dumps(
                 [{"rank": 1, "title": "[HARNESS] All results were from blocked sites (Instagram/TikTok/etc). "
@@ -256,7 +323,8 @@ def filter_garbage_results(tool_result_str: str) -> tuple[str, bool]:
                   "Try a COMPLETELY different query with different entities and constraints.",
                   "url": "", "snippet": "", "content": ""}],
                 ensure_ascii=False), False
-        return json.dumps(filtered, ensure_ascii=False), True
+        has_signal = bool(filtered) and (allowlist_hit or len(filtered_domains) >= 1)
+        return json.dumps(filtered, ensure_ascii=False), has_signal
     except (json.JSONDecodeError, TypeError):
         return tool_result_str, True
 
@@ -408,15 +476,11 @@ def should_block_duplicate_query(current_kw: set, recent_kw: list[set]) -> bool:
     if not current_kw or not recent_kw:
         return False
     last_window = recent_kw[-5:]
-    high_overlap_count = 0
     for prev in last_window:
         overlap = jaccard_similarity(current_kw, prev)
-        new_terms = len(current_kw - prev)
-        # Very high overlap and almost no new tokens => likely useless rewording.
-        if overlap >= 0.85 and new_terms <= 1:
-            high_overlap_count += 1
-    # Require repeated near-identical retries before blocking.
-    return high_overlap_count >= 2
+        if overlap >= QUERY_SIMILARITY_THRESHOLD:
+            return True
+    return False
 
 
 REFLECTION_PROMPT = (
@@ -462,6 +526,9 @@ SYSTEM_PROMPT = """You are a search agent. Answer questions by searching the web
 3. NEVER search metaphors/riddles literally. They return garbage.
 4. PIVOT after 2 failed searches: switch to a completely different clue chain.
 5. COMMIT when confident: one confirmation search, then output your answer.
+6. DO NOT repeat near-duplicate queries. Similarity > 0.7 means rewrite.
+7. Prefer snippet search first (fetch=False). Use fetch=True only for final verification.
+8. Aim for two independent supporting sources before final answer.
 
 # SEARCH STRATEGY
 
@@ -480,9 +547,13 @@ Bad:  social history book fourteen persons  ← too vague
 
 # OUTPUT
 <answer>your answer here</answer>
-Always give an answer. A guess beats blank."""
+If evidence is weak, use: <answer confidence="low">your best guess</answer>."""
 
-FORCE_ANSWER_PROMPT = """[SYSTEM] Step budget exhausted. Do NOT call any more tools. Based on your research, what is the answer? Write it between <answer> and </answer> tags."""
+FORCE_ANSWER_PROMPT = (
+    "[SYSTEM] Step budget exhausted. Do NOT call any more tools. "
+    "If you have >=2 independent sources, output <answer>...</answer>. "
+    "Otherwise output <answer confidence=\"low\">...</answer>."
+)
 
 # ---------------------------------------------------------------------------
 # Helper: parse leaked tool_call from reasoning_content
@@ -530,6 +601,9 @@ def parse_leaked_tool_calls(reasoning_content: str) -> list[dict] | None:
 # ---------------------------------------------------------------------------
 def extract_answer(content: str) -> str:
     """Extract text from <answer>...</answer> tags, or return full content."""
+    m_low = re.search(r'<answer\s+confidence="low">(.*?)</answer>', content, re.DOTALL)
+    if m_low:
+        return f'[LOW_CONFIDENCE] {m_low.group(1).strip()}'
     m = re.search(r'<answer>(.*?)</answer>', content, re.DOTALL)
     if m:
         return m.group(1).strip()
@@ -581,9 +655,17 @@ def run_task(
     force_answer_injected = False
     recent_queries = []  # Track recent search queries for dedup detection
     low_signal_streak = 0
+    state_index = 0
+    state_attempts = {s: 0 for s in STATE_SEQUENCE}
+    evidence_domains = set()
+    state_domain_evidence = {s: set() for s in STATE_SEQUENCE}
 
     for step in range(1, max_steps + 1):
         logger.info("--- step %d/%d ---", step, max_steps)
+        current_state = STATE_SEQUENCE[state_index]
+        if current_state in STATE_INSTRUCTION:
+            traj.write(Role.USER, STATE_INSTRUCTION[current_state], step_id=step)
+            state_attempts[current_state] += 1
 
         # --- Guardrail: inject reflection every 5 steps ---
         if step > 1 and step % 5 == 0 and not force_answer_injected:
@@ -592,9 +674,11 @@ def run_task(
             logger.info("Injected REFLECTION_PROMPT at step %d", step)
 
         # --- Guardrail: if search quality is poor for consecutive rounds, force pivot ---
-        if low_signal_streak >= 2 and not force_answer_injected:
+        if low_signal_streak >= LOW_SIGNAL_PIVOT_THRESHOLD and not force_answer_injected:
             traj.write(Role.USER, LOW_SIGNAL_PIVOT_PROMPT, step_id=step)
             logger.info("Injected LOW_SIGNAL_PIVOT_PROMPT at step %d", step)
+            # Low signal in one state => consume trial budget faster to force a chain switch.
+            state_attempts[current_state] += 1
 
         # --- Guardrail: detect duplicate queries ---
         if len(recent_queries) >= 3:
@@ -607,7 +691,14 @@ def run_task(
 
         # Inject force-answer prompt near the end
         if step == max_steps - 2 and not force_answer_injected:
-            traj.write(Role.USER, FORCE_ANSWER_PROMPT, step_id=step)
+            if len(evidence_domains) >= MIN_INDEPENDENT_SOURCES:
+                final_prompt = FORCE_ANSWER_PROMPT
+            else:
+                final_prompt = (
+                    "[SYSTEM] Step budget exhausted and evidence is weak (<2 independent sources). "
+                    "Do NOT call tools. Output <answer confidence=\"low\">...</answer>."
+                )
+            traj.write(Role.USER, final_prompt, step_id=step)
             force_answer_injected = True
             logger.info("Injected FORCE_ANSWER_PROMPT")
 
@@ -763,6 +854,14 @@ def run_task(
                     low_signal_streak = 0
                 else:
                     low_signal_streak += 1
+                try:
+                    parsed_results = json.loads(tool_result)
+                except Exception:
+                    parsed_results = []
+                if isinstance(parsed_results, list):
+                    domains = _collect_domains_from_results(parsed_results)
+                    evidence_domains.update(domains)
+                    state_domain_evidence[current_state].update(domains)
                 # Track query keywords for dedup detection
                 kw = extract_query_keywords(fn_args)
                 if kw:
@@ -771,6 +870,25 @@ def run_task(
             logger.info("tool_result (%s): %s", fn_name, str(tool_result)[:200])
             traj.write(Role.TOOL, tool_result, step_id=step, tool_call_id=tc_id,
                        extra={"fn_name": fn_name, "fn_args": fn_args})
+
+        # State transitions and failsafe controls.
+        if current_state == "S0_PARSE":
+            state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
+        elif current_state == "S1_SUBJECT":
+            if len(state_domain_evidence[current_state]) >= 1:
+                state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
+        elif current_state == "S2_EVENT":
+            if len(evidence_domains) >= MIN_INDEPENDENT_SOURCES:
+                state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
+        elif current_state == "S3_DETAIL" and final_answer:
+            state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
+
+        if state_attempts[current_state] >= MAX_TRIALS_PER_STATE and state_index < len(STATE_SEQUENCE) - 1:
+            state_index += 1
+            logger.info(
+                "Force transition by trial budget: %s -> %s",
+                current_state, STATE_SEQUENCE[state_index]
+            )
     else:
         logger.warning("Reached max_steps=%d", max_steps)
         # Try to extract answer from last assistant content
