@@ -1,0 +1,384 @@
+
+❯ 查看现在的/inspire/qb-ilm2/project/26summer-camp-01/26210893/harness-sii/runs 
+  /benchmark_2gpu下的输出                                                       
+
+  Listed 2 directories (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  idx= 0 steps=13 elapsed= 132.7s leaked=10 hints=1 empty=0 errors=3 pre
+     d='根据 Brunswick Corporation 2008 年 10-K 报告，公司当时约有 1170
+     万股
+     股份可用于
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  bench_000: 29 entries
+
+     step=0 user: This corporation manufactures powerboats. According to it
+     … +46 lines (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  idx=0 pred='根据 Brunswick Corporation 2008 年 10-K 报告，公司当时约有
+      1170 万股股份可用于回购（from stock buyback program initiated in 2005
+     ）。'
+     … +6 lines (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  idx=0 pred='根据 Brunswick Corporation 2008 年 10-K 报告，公司当时约有
+      1170 万股股份可用于回购（from stock buyback program initiated in 2005
+     ）。'
+     … +9 lines (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  Total progress entries: 4
+
+     idx=0 pred='根据 Brunswick Corporation 2008 年 10-K 报告，公司当时约有
+     … +13 lines (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  Total progress entries: 4
+
+     idx=0 pred='根据 Brunswick Corporation 2008 年 10-K 报告，公司当时约有
+     … +14 lines (ctrl+o to expand)
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  === bench_001: 42 entries ===
+     step=18 [FORCE_ANSWER]
+     step=18 assistant content=''
+     … +12 lines (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  === bench_003: 10 entries ===
+     step=0 user: There's an individual who fits all of the requirements li
+     sted below. Please find this person and giv...
+     … +17 lines (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  === bench_001 step 19 ===
+     content: '<tool_call>\n<function=search_text>\n<parameter=fetch>\nTrue
+     \n</parameter>\n<parameter=query>\nJayben Camacho organ donor recipien
+     … +18 lines (ctrl+o to expand)
+
+● 发现了两个新 bug：
+
+  Bug 1 (bench_001 idx=1): Step 19 的 content 直接包含了原始的 <tool_call> XML
+  文本。tool_calls 为 None（因为 tool_choice="none" 生效了），但模型把 tool call
+   写进了 content 文本里。extract_answer 找不到 <answer> 标签，就把整个 raw
+  tool_call XML 当答案返回了。
+
+  Bug 2 (bench_003 idx=3): Step 4 模型在 reasoning_content
+  中完全幻觉（输出了"赚50亿"的垃圾中文），并在其中放了 <answer>
+  标签包裹垃圾内容。我之前的 fix 会从 reasoning_content 提取这个垃圾答案。
+
+  修复 Bug 1：extract_answer 应该检测并拒绝 raw tool call 内容。
+
+  Read 1 file (ctrl+o to expand)
+
+● Update(task_runner.py)  ⎿  Added 3 lines
+      80          answer = match.group(1).strip()
+      81          answer = _TAG_ARTIFACT_RE.sub("", answer).strip()
+      82          return answer
+      83 +    # Reject raw tool call content as answer                   
+      84 +    if content.lstrip().startswith(("<tool_call>", "<function="
+         +)):                                                            
+      85 +        return ""                                              
+      86      return content
+      87  
+      88  
+
+● Bash(python3 -c "import ast; ast.parse(open('/inspire/qb-ilm2/project/26summer
+      -camp-01/26210893/harness-sii/task_runner.py').read()); print('OK')")
+  ⎿  OK
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  step=4 content=''
+     step=4 reasoning (full):
+     ### 推理结论
+     … +32 lines (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  === bench_003 step 3 tool result ===
+     fn_name: search_text
+     content: [{"rank": 1, "title": "Luc Besson - Wikipedia", "url": "https
+     … +8 lines (ctrl+o to expand)
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  idx= 0 steps=13 elapsed= 132.7s leaked=10 hints=1 empty=0 errors=3 pre
+     d='根据 Brunswick Corporation 2008 年 10-K 报告，公司当时约有 1170
+     万股
+     股份可用于回购（from stock buybac
+     … +8 lines (ctrl+o to expand)
+
+  Listed 1 directory (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  idx= 0 steps=13 elapsed= 132.7s leaked=10 errors=3 pred='根据 Brunswic
+     k Corporation 2008 年 10-K 报告，公司当时约有 1170
+     万股股份可用于回购（
+     from stock buybac
+     … +10 lines (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  idx= 0 steps=13 elapsed= 132.7s leaked=10 errors=3 pred='根据 Brunswic
+     k Corporation 2008 年 10-K 报告，公司当时约有 1170
+     万股股份可用于回购（
+     from stock buybac
+     … +10 lines (ctrl+o to expand)
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  idx= 0 steps=13 elapsed= 132.7s leaked=10 errors=3 pred='根据 Brunswic
+     k Corporation 2008 年 10-K 报告，公司当时约有 1170
+     万股股份可用于回购（
+     from stock buybac
+     … +10 lines (ctrl+o to expand)
+
+● 从当前的 4 个已完成结果来看，有几个明显的 bug：
+
+  Bug 1: extract_answer 的 fallback 逻辑有问题（已修复）
+
+  - bench_001 (idx=1): pred 是原始 <tool_call> XML — 模型在 tool_choice="none"
+  的最后一步把 tool call 写进了 content，extract_answer 找不到 <answer> 就把 raw
+   content 返回了
+  - 修复：添加了对 <tool_call> / <function= 开头内容的拒绝
+
+  Bug 2: bench_000 没有找到正确答案
+
+  bench_000 跑了 13 步，用了 10 个 leaked tool calls，但最终给出的答案是关于
+  Brunswick Corporation 的（错误公司），而非 Marine Products
+  Corporation。之前的两次运行都能正确找到答案（1,570,428）。这是因为 leaked tool
+   call 的关键词搜索方向跑偏了，且 tool_choice="none" 的阈值从 <=0 改成 <=1
+  后，在 step 19 就强制无法调工具了（max_steps=20, 所以 step 19 的
+  remaining=1）。但 bench_000 只跑到 step 13 就结束了——这说明模型在 step 13
+  输出了带答案的 content 但没有 <answer> 标签。
+
+  Bug 3: bench_003 (idx=3): 模型完全幻觉
+
+  模型在第 4 步的 reasoning_content
+  中输出了完全无关的中文垃圾内容（"赚50亿梦想"），并用 <answer>
+  标签包裹了垃圾答案。这是 Qwen3.5-9B 在 enable_thinking=True
+  时偶尔发生的严重幻觉。我之前的 reasoning_content 答案提取 fix
+  会把这个垃圾答案提取出来。这个没法在 harness 层面完美修复，属于模型质量问题。
+
+  Bug 4: bench_002 (idx=2): pred 是 'erschiri'
+
+  这看起来像是模型输出了德语片段。让我看看具体怎么回事：
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  bench_002: 42 entries
+     Last content step=19:
+     '<answer> erschiri </answer>'
+     … +5 lines (ctrl+o to expand)
+
+● 从当前 4 个已完成的结果来看，问题很严重：
+
+  ┌─────┬───────────────────────────────────┬───────────────────────────────┐
+  │ idx │               pred                │             问题              │
+  ├─────┼───────────────────────────────────┼───────────────────────────────┤
+  │     │ "根据 Brunswick Corporation 2008  │ 没用 <answer>                 │
+  │ 0   │ 年 10-K 报告..."                  │ 标签，extract_answer          │
+  │     │                                   │ 返回了整段解释文本            │
+  ├─────┼───────────────────────────────────┼───────────────────────────────┤
+  │     │ <tool_call><function=search_text> │ tool_choice="none" 时模型把   │
+  │ 1   │ ...                               │ tool call 写进                │
+  │     │                                   │ content（已修复）             │
+  ├─────┼───────────────────────────────────┼───────────────────────────────┤
+  │ 2   │ "erschiri"                        │ 模型幻觉，输出了无意义的德语  │
+  │     │                                   │ 片段                          │
+  ├─────┼───────────────────────────────────┼───────────────────────────────┤
+  │ 3   │ "立即行动起来...实现50亿的梦想！" │ 模型完全幻觉，reasoning_conte │
+  │     │                                   │ nt 中的 <answer> 包裹了垃圾   │
+  └─────┴───────────────────────────────────┴───────────────────────────────┘
+
+  除了之前修复的 bug 外，还有一个新的可修复问题：
+
+  Bug: extract_answer 的 fallback 返回整段长文本（bench_000）
+
+  当模型输出了有内容的 content 但没有 <answer> 标签时，extract_answer
+  直接返回整个 content。对于 bench_000 这种情况，content
+  是一大段解释性文字，不是简短答案。应该尝试从中提取关键信息，或者至少截断。
+
+● Bash(python3 -c "
+      import json…)
+  ⎿  === bench_000 step 13 (final) ===
+     content: '搜索结果显示了 Brunswick Corporation 的 2007 年 10-K
+     报告，提
+     到 "approximately 11.7 million shares have"。但这些年份可能不包含 202
+     … +12 lines (ctrl+o to expand)
+
+● 好的，总结当前运行输出中看到的所有问题：
+
+  4 个已完成结果全部有问题：
+
+  ┌─────┬──────┬─────────────────────┬──────────────────────────────────────┐
+  │ idx │ step │        pred         │                 根因                 │
+  │     │  s   │                     │                                      │
+  ├─────┼──────┼─────────────────────┼──────────────────────────────────────┤
+  │     │      │ "根据 Brunswick     │ 模型搜索方向跑偏，但确实用了         │
+  │ 0   │ 13   │ Corporation..."     │ <answer> 标签，只是答案本身错误      │
+  │     │      │ (错误公司+长文本)   │                                      │
+  ├─────┼──────┼─────────────────────┼──────────────────────────────────────┤
+  │ 1   │ 19   │ raw <tool_call> XML │ tool_choice="none" 时模型把 tool     │
+  │     │      │                     │ call 写进 content（已修复）          │
+  ├─────┼──────┼─────────────────────┼──────────────────────────────────────┤
+  │ 2   │ 19   │ "erschiri"          │ 模型在 <answer> 标签中输出了无意义的 │
+  │     │      │                     │ 德语片段（模型幻觉）                 │
+  ├─────┼──────┼─────────────────────┼──────────────────────────────────────┤
+  │ 3   │ 4    │ "立即行动...50亿梦  │ 模型在 reasoning_content             │
+  │     │      │ 想"                 │ 中完全幻觉（模型质量问题）           │
+  └─────┴──────┴─────────────────────┴──────────────────────────────────────┘
+
+  代码层面已修复的 Bug（本次会话）：
+
+  1. Qwen 格式 leaked tool call 检测（<function=name><parameter=...>）
+  2. <function=answer> 模式的答案提取
+  3. _TAG_ARTIFACT_RE 清理答案中的标签残留
+  4. tool_choice="none" 提前到 steps_remaining <= 1
+  5. extract_answer 拒绝 raw <tool_call> 开头的 content
+
+  无法在 harness 层修复的模型质量问题：
+
+  - 模型幻觉（bench_003 输出"赚50亿"、bench_002 输出"erschiri"）
+  - 模型搜索方向错误（bench_000 搜了 Brunswick 而非 Marine Products）
+  - 模型在 enable_thinking=True 时极高比例的 leaked tool calls（平均 60-80%）
+
+  这些模型问题需要从 prompt engineering 或模型选择层面解决，不是 harness
+  代码能修的。
+
+✻ Cogitated for 5m 2s
+
+❯ 日志里这个是正常现象吗                                                        
+  INFO:     10.244.8.144:0 - "POST /browser/navigate HTTP/1.1" 500 Internal     
+  Server Error                                                                  
+  ERROR:    Exception in ASGI application                                       
+  Traceback (most recent call last):                                            
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/uvicorn/protocols/h 
+  ttp/h11_impl.py", line 403, in run_asgi                                       
+      result = await app(  # type: ignore[func-returns-value]                   
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/uvicorn/middleware/ 
+  proxy_headers.py", line 60, in __call__                                       
+      return await self.app(scope, receive, send)                               
+    File                                                                        
+  "/opt/conda/envs/pegp/lib/python3.10/site-packages/fastapi/applications.py",  
+  line 1159, in __call__                                                        
+      await super().__call__(scope, receive, send)                              
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/applicati 
+  ons.py", line 90, in __call__                                                 
+      await self.middleware_stack(scope, receive, send)                         
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/middlewar 
+  e/errors.py", line 186, in __call__                                           
+      raise exc                                                                 
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/middlewar 
+  e/errors.py", line 164, in __call__                                           
+      await self.app(scope, receive, _send)                                     
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/middlewar 
+  e/cors.py", line 88, in __call__                                              
+      await self.app(scope, receive, send)                                      
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/middlewar 
+  e/exceptions.py", line 63, in __call__                                        
+      await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)  
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/_exceptio 
+  n_handler.py", line 53, in wrapped_app                                        
+      raise exc                                                                 
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/_exceptio 
+  n_handler.py", line 42, in wrapped_app                                        
+      await app(scope, receive, sender)                                         
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/fastapi/middleware/ 
+  asyncexitstack.py", line 18, in __call__                                      
+      await self.app(scope, receive, send)                                      
+    File                                                                        
+  "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/routing.py",     
+  line 660, in __call__                                                         
+      await self.middleware_stack(scope, receive, send)                         
+    File                                                                        
+  "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/routing.py",     
+  line 680, in app                                                              
+      await route.handle(scope, receive, send)                                  
+    File                                                                        
+  "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/routing.py",     
+  line 276, in handle                                                           
+      await self.app(scope, receive, send)                                      
+    File                                                                        
+  "/opt/conda/envs/pegp/lib/python3.10/site-packages/fastapi/routing.py", line  
+  134, in app                                                                   
+      await wrap_app_handling_exceptions(app, request)(scope, receive, send)    
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/_exceptio 
+  n_handler.py", line 53, in wrapped_app                                        
+      raise exc                                                                 
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/starlette/_exceptio 
+  n_handler.py", line 42, in wrapped_app                                        
+      await app(scope, receive, sender)                                         
+    File                                                                        
+  "/opt/conda/envs/pegp/lib/python3.10/site-packages/fastapi/routing.py", line  
+  120, in app                                                                   
+      response = await f(request)                                               
+    File                                                                        
+  "/opt/conda/envs/pegp/lib/python3.10/site-packages/fastapi/routing.py", line  
+  674, in app                                                                   
+      raw_response = await run_endpoint_function(                               
+    File                                                                        
+  "/opt/conda/envs/pegp/lib/python3.10/site-packages/fastapi/routing.py", line  
+  328, in run_endpoint_function                                                 
+      return await dependant.call(**values)                                     
+    File "/inspire/qb-ilm2/project/26summer-camp-01/26210893/browser-service/ap 
+  p/routes.py", line 173, in navigate                                           
+      await tab.page.goto(req.url, wait_until=req.wait_until,                   
+  timeout=req.timeout_ms)                                                       
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/playwright/async_ap 
+  i/_generated.py", line 9365, in goto                                          
+      await self._impl_obj.goto(                                                
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/playwright/_impl/_p 
+  age.py", line 552, in goto                                                    
+      return await self._main_frame.goto(**locals_to_params(locals()))          
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/playwright/_impl/_f 
+  rame.py", line 153, in goto                                                   
+      await self._channel.send(                                                 
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/playwright/_impl/_c 
+  onnection.py", line 69, in send                                               
+      return await self._connection.wrap_api_call(                              
+    File "/opt/conda/envs/pegp/lib/python3.10/site-packages/playwright/_impl/_c 
+  onnection.py", line 559, in wrap_api_call                                     
+      raise rewrite_error(error, f"{parsed_st['apiName']}: {error}") from None  
+  playwright._impl._errors.TimeoutError: Page.goto: Timeout 30000ms exceeded.   
+  Call log:                                                                     
+    - navigating to "https://www.abc10.com/article/news/nation-world/teen-donat 
+  es-organs-after-deadly-car-crash/507-0c6b62e8-4ccd-4c11-ab2b-4aa00b8e2957",   
+  waiting until "domcontentloaded"                                              
+
+● 这不是 bug，是正常的超时错误。Playwright
+  在访问外部网站时超时了（30秒内没加载完），browser-service 正确地返回了 500
+  错误，然后 harness 的 browser_navigate 工具会把它包装成 {"ok": false, "error":
+   "navigate failed: ..."} 返回给 agent。
+
+  从 trajectory 里也能看到 agent 收到这类错误后会换策略（比如改用
+  search_text），这是预期行为。
+
+  不过有一点可以优化：当前 browser_navigate 的超时异常没有被 route handler
+  捕获，直接抛到了 ASGI 层变成 500。更好的做法是在 route handler 里 catch
+  TimeoutError 并返回一个结构化的 JSON 错误响应（比如 {"ok": false, "error": 
+  "timeout"}），而不是让 FastAPI 返回裸 500。这样日志会更干净，也避免了不必要的
+  traceback 刷屏。
+
+  要我去修一下 browser-service 的错误处理吗？
+
+✻ Crunched for 10s

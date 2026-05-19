@@ -13,14 +13,14 @@ Two operating modes are supported, picked automatically at import time:
 
 2. **Direct mode** (legacy / local-dev)
    When ``SEARCH_PROXY_URL`` is empty, the tool talks directly to
-   Serper / Jina / 0x0 from this process, which requires both internet
+   Serper / Jina from this process, which requires both internet
    access AND the original API keys (`SERPER_API_KEY`, `JINA_API_KEY`).
 
 The two public tool functions keep identical signatures and return shapes
 so the LLM tool schema does not change between modes::
 
     search_text(query, top_k=5, fetch=True, max_chars=500) -> list[dict]
-    search_image(image, top_k=5, fetch=True, max_chars=500) -> list[dict]
+    search_image(image_url, top_k=5, fetch=True, max_chars=500) -> list[dict]
 
 Each result dict::
 
@@ -30,9 +30,7 @@ Each result dict::
 from __future__ import annotations
 
 import logging
-import mimetypes
 import os
-from pathlib import Path
 from typing import Optional
 
 import requests
@@ -71,7 +69,6 @@ except Exception:  # noqa: BLE001
 # Direct mode (only used when SEARCH_PROXY_URL is empty).
 SERPER_API_KEY      = os.getenv("SERPER_API_KEY", "a42e8b4adb370b5c866a2c6feb870641691c5901")
 JINA_API_KEY        = os.getenv("JINA_API_KEY", "jina_27b632dc368a4d878d77a086367a1493HIydGZpZQJhxBWjflZBGmr89R44M")
-IMAGE_UPLOADER      = os.getenv("IMAGE_UPLOADER", "0x0")
 
 SERPER_SEARCH_URL   = "https://google.serper.dev/search"
 SERPER_LENS_URL     = "https://google.serper.dev/lens"
@@ -118,8 +115,6 @@ def _proxy_search(path: str, payload: dict) -> list[dict]:
     """POST /search/text or /search/image; normalize to the legacy result shape."""
     data = _proxy_post(path, payload)
     if not data.get("ok", False):
-        # Surface the proxy-side error as a single empty result so the LLM
-        # can see what went wrong without us raising.
         err = data.get("error", "unknown proxy error")
         logger.warning("search-proxy %s failed: %s", path, err)
         return [{"rank": 1, "title": "", "url": "", "snippet": f"[proxy-error] {err}"}]
@@ -136,34 +131,6 @@ def _proxy_search(path: str, payload: dict) -> list[dict]:
             entry["content"] = hit["content"]
         out.append(entry)
     return out
-
-
-def _proxy_upload_image(path: Path) -> str:
-    """Stream a local image to the proxy's /upload_image and get a public URL."""
-    if not path.exists() or not path.is_file():
-        raise FileNotFoundError(path)
-    mime, _ = mimetypes.guess_type(str(path))
-    mime = mime or "application/octet-stream"
-
-    headers = _proxy_headers(json_body=False)
-
-    with open(path, "rb") as fh:
-        files = {"file": (path.name, fh, mime)}
-        resp = requests.post(
-            f"{SEARCH_PROXY_URL}/upload_image",
-            files=files,
-            headers=headers,
-            timeout=PROXY_HTTP_TIMEOUT,
-            verify=SEARCH_PROXY_VERIFY_SSL,
-        )
-    resp.raise_for_status()
-    data = resp.json()
-    if not data.get("ok", False):
-        raise RuntimeError(f"upload_image failed: {data.get('error')}")
-    url = data.get("url", "")
-    if not url:
-        raise RuntimeError(f"upload_image returned empty url: {data}")
-    return url
 
 
 # ---------------------------------------------------------------------------
@@ -207,52 +174,24 @@ def _jina_fetch(url: str, max_chars: int) -> str:
         return f"[jina-error] {type(exc).__name__}: {exc}"
 
 
-def _direct_upload_local_image(path: Path) -> str:
-    if IMAGE_UPLOADER != "0x0":
-        raise RuntimeError(
-            f"Unsupported IMAGE_UPLOADER={IMAGE_UPLOADER!r}. "
-            "Either set IMAGE_UPLOADER=0x0, host the image yourself "
-            "and pass an http(s) URL, or run via SEARCH_PROXY_URL."
+def _require_image_url(image_url: Optional[str]) -> str:
+    """Validate that ``image_url`` is a public http(s) URL.
+
+    Local file paths are no longer accepted: uploading user images to a
+    third-party host on the fly is unsafe and has been removed. Callers
+    must supply an online URL that points to the same image they want
+    reverse-searched.
+    """
+    if not image_url or not str(image_url).strip():
+        raise ValueError("search_image requires a non-empty image URL.")
+    s = str(image_url).strip()
+    if not (s.startswith("http://") or s.startswith("https://")):
+        raise ValueError(
+            f"search_image: {s!r} is not an http(s) URL. "
+            "Local image upload has been disabled for safety - please pass "
+            "a publicly reachable URL pointing to the image."
         )
-    if not path.exists():
-        raise FileNotFoundError(path)
-    mime, _ = mimetypes.guess_type(str(path))
-    mime = mime or "application/octet-stream"
-    with open(path, "rb") as fh:
-        files = {"file": (path.name, fh, mime)}
-        headers = {"User-Agent": "kimi-agent-harness/1.0"}
-        resp = requests.post(
-            "https://0x0.st", files=files, headers=headers, timeout=DEFAULT_TIMEOUT,
-        )
-    resp.raise_for_status()
-    url = resp.text.strip()
-    if not url.startswith("http"):
-        raise RuntimeError(f"Unexpected 0x0.st response: {url!r}")
-    logger.info("Uploaded %s -> %s", path, url)
-    return url
-
-
-def _resolve_image_to_url_direct(image: str) -> str:
-    if image.startswith("http://") or image.startswith("https://"):
-        return image
-    p = Path(image).expanduser()
-    if p.exists() and p.is_file():
-        return _direct_upload_local_image(p)
-    raise ValueError(
-        f"search_image: {image!r} is neither an http(s) URL nor an existing local file."
-    )
-
-
-def _resolve_image_to_url_proxy(image: str) -> str:
-    if image.startswith("http://") or image.startswith("https://"):
-        # Already public — proxy can feed it straight to /search/image.
-        return image
-    p = Path(image).expanduser()
-    if p.exists() and p.is_file():
-        return _proxy_upload_image(p)
-    raise ValueError(
-        f"search_image: {image!r} is neither an http(s) URL nor an existing local file."
-    )
+    return s
 
 
 # ---------------------------------------------------------------------------
@@ -307,23 +246,30 @@ def search_text(
 
 
 def search_image(
-    image: str,
+    image: Optional[str] = None,
     top_k: int = 1,
     fetch: bool = True,
     max_chars: int = 500,
+    *,
+    image_url: Optional[str] = None,
 ) -> list[dict]:
     """Reverse image search via Google Lens (Serper /lens).
 
-    ``image`` may be an http(s) URL or a local file path. In proxy mode
-    local files are streamed to the proxy's ``/upload_image`` endpoint;
-    in direct mode they are pushed to a public host (default 0x0.st).
+    ``image``/``image_url`` must be an http(s) URL. Local file upload is
+    intentionally disabled because concurrent upload-and-search can produce
+    transient public links that fail before Serper/Lens can fetch them.
     """
-    if not image or not image.strip():
-        raise ValueError("search_image requires a non-empty `image` argument.")
+    if image is not None and image_url is not None:
+        image_s = str(image).strip()
+        image_url_s = str(image_url).strip()
+        if image_s != image_url_s:
+            raise ValueError(
+                "search_image received both `image` and `image_url` with different values."
+            )
+    image_url = _require_image_url(image_url if image_url is not None else image)
     top_k = max(1, min(int(top_k), 10))
 
     if _proxy_enabled():
-        image_url = _resolve_image_to_url_proxy(image.strip())
         logger.info("search_image(proxy) image_url=%s top_k=%d fetch=%s",
                     image_url, top_k, fetch)
         return _proxy_search(
@@ -337,7 +283,6 @@ def search_image(
         )
 
     # Direct mode
-    image_url = _resolve_image_to_url_direct(image.strip())
     logger.info("search_image(direct) image_url=%s top_k=%d fetch=%s",
                 image_url, top_k, fetch)
     payload = {"url": image_url}
@@ -375,7 +320,7 @@ if __name__ == "__main__":
     p_text.add_argument("--no-fetch", action="store_true")
 
     p_img = sub.add_parser("image")
-    p_img.add_argument("image", help="URL or local path")
+    p_img.add_argument("image_url", help="http(s) image URL")
     p_img.add_argument("--top-k", type=int, default=3)
     p_img.add_argument("--no-fetch", action="store_true")
 
@@ -386,6 +331,6 @@ if __name__ == "__main__":
     if args.cmd == "text":
         out = search_text(args.query, top_k=args.top_k, fetch=not args.no_fetch)
     else:
-        out = search_image(args.image, top_k=args.top_k, fetch=not args.no_fetch)
+        out = search_image(image_url=args.image_url, top_k=args.top_k, fetch=not args.no_fetch)
 
-    print(json.dumps(out, ensure_ascii=False, indent=2)[:5000])
+    print(json.dumps(out, ensure_ascii=False, indent=2)[:2000])

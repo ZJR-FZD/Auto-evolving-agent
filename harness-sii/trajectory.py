@@ -79,6 +79,9 @@ class Trajectory:
         """
         messages = []
         for entry in self.read_all():
+            if entry.get("harness_summary"):
+                continue
+
             role = entry["role"]
 
             msg: dict = {"role": role, "content": entry["content"] or ""}

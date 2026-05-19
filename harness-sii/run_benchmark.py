@@ -94,6 +94,10 @@ def _result_row(index: int, item: dict, result: dict, elapsed: float) -> dict:
         "steps": result.get("steps", 0),
         "trajectory_path": result.get("trajectory_path", ""),
         "elapsed_seconds": elapsed,
+        "stats": result.get("stats", {}),
+        "signals": result.get("signals", {}),
+        "memory_recalled": result.get("memory_recalled", []),
+        "memory_written": result.get("memory_written", []),
     }
 
 
@@ -122,23 +126,45 @@ def _run_one(payload: tuple[int, int, dict, dict]) -> tuple[int, dict]:
 
     problem = item["problem"]
     image_b64 = item.get("image", "").strip() or None
+    enable_evolution = str(config.get("agent_mode", "evolved")).lower() != "raw"
     task = {
         "id": f"bench_{index:03d}",
         "instruction": problem,
         "image_b64": image_b64,
         "image_url": None,
+        "task_family": "benchmark",
+        "metadata": {
+            "has_image": bool(image_b64),
+            "index": index,
+        },
+        "memory_dir": config.get("memory_dir"),
+        "memory_update_mode": "disabled" if not enable_evolution else config.get("memory_update_mode", "heuristic"),
+        "enable_memory": enable_evolution,
+        "enable_reflection": enable_evolution and bool(config.get("enable_reflection", True)),
+        "allow_gold_feedback": False,
     }
 
     remove_stale_trajectory(Path(config["traj_dir"]), task["id"])
     logger.info("[%d/%d] %s", index + 1, total, problem[:80])
     started_at = time.time()
-    result = task_runner.run_task(
-        task,
-        max_steps=int(config["max_steps"]),
-        llm_base_url=str(config["llm_url"]),
-        model_name=str(config["model"]),
-        trajectory_dir=str(config["traj_dir"]),
-    )
+
+    enable_retry = config.get("enable_confidence_retry", False)
+    if enable_retry:
+        result = task_runner.run_task_with_retry(
+            task,
+            max_steps=int(config["max_steps"]),
+            llm_base_url=str(config["llm_url"]),
+            model_name=str(config["model"]),
+            trajectory_dir=str(config["traj_dir"]),
+        )
+    else:
+        result = task_runner.run_task(
+            task,
+            max_steps=int(config["max_steps"]),
+            llm_base_url=str(config["llm_url"]),
+            model_name=str(config["model"]),
+            trajectory_dir=str(config["traj_dir"]),
+        )
     return index, _result_row(index, item, result, time.time() - started_at)
 
 
@@ -154,6 +180,20 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--start", type=int, default=0, help="Start index in the dataset")
     parser.add_argument("--end", type=int, default=None, help="End index in the dataset, exclusive")
     parser.add_argument("--concurrency", type=int, default=1, help="Number of samples to evaluate concurrently")
+    parser.add_argument(
+        "--agent-mode",
+        choices=("raw", "evolved"),
+        default="evolved",
+        help="raw disables reflection and memory; evolved enables self-evolution modules",
+    )
+    parser.add_argument("--memory-dir", type=Path, default=None, help="Long-term memory directory/path; default is <run_dir>/memory")
+    parser.add_argument(
+        "--memory-update-mode",
+        choices=("heuristic", "disabled"),
+        default="heuristic",
+        help="Benchmark never exposes labels; heuristic only uses trajectory failure signals",
+    )
+    parser.add_argument("--disable-reflection", action="store_true", help="Disable reflection hints while keeping memory recall if evolved")
     parser.add_argument(
         "--result-format",
         choices=("full", "minimal"),
@@ -334,6 +374,11 @@ def main() -> None:
         "model": args.model,
         "max_steps": args.max_steps,
         "concurrency": concurrency,
+        "agent_mode": args.agent_mode,
+        "memory_dir": args.memory_dir or (run_dir / "memory"),
+        "memory_update_mode": args.memory_update_mode,
+        "allow_gold_feedback": False,
+        "enable_reflection": not args.disable_reflection,
         "result_format": args.result_format,
         "started_at": started_at,
         "args": args,
@@ -349,6 +394,10 @@ def main() -> None:
         "llm_url": args.llm_url,
         "model": args.model,
         "max_steps": args.max_steps,
+        "agent_mode": args.agent_mode,
+        "memory_dir": str(args.memory_dir or (run_dir / "memory")),
+        "memory_update_mode": args.memory_update_mode,
+        "enable_reflection": not args.disable_reflection,
     }
 
     for index, item in selected:

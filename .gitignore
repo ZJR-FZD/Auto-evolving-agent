@@ -11,3 +11,5 @@ Qwen3-32B
 results
 trajectories/
 datasets
+prompt.md
+.claude

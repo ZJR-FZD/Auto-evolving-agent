@@ -82,6 +82,13 @@ def _source_id(item: dict) -> object:
     return item.get("_id", item.get("id"))
 
 
+def _item_metadata(item: dict) -> dict:
+    return {
+        "question_type": item.get("type", ""),
+        "source_id": _source_id(item),
+    }
+
+
 def _validate_resume_dataset(metadata_path: Path, current_fingerprint: dict[str, object]) -> None:
     if not metadata_path.exists():
         return
@@ -128,6 +135,10 @@ def _result_row(index: int, item: dict, result: dict, elapsed: float) -> dict:
         "steps": result.get("steps", 0),
         "trajectory_path": result.get("trajectory_path", ""),
         "elapsed_seconds": elapsed,
+        "stats": result.get("stats", {}),
+        "signals": result.get("signals", {}),
+        "memory_recalled": result.get("memory_recalled", []),
+        "memory_written": result.get("memory_written", []),
     }
 
 
@@ -157,23 +168,45 @@ def _run_one(payload: tuple[int, int, dict, dict]) -> tuple[int, dict]:
     patch_task_runner_tool_args(task_runner)
 
     question = item["question"]
+    enable_evolution = str(config.get("agent_mode", "evolved")).lower() != "raw"
+    allow_gold_feedback = bool(config.get("allow_gold_feedback", False))
     task = {
         "id": f"2wiki_{index:03d}",
         "instruction": question,
         "image_b64": None,
         "image_url": None,
+        "task_family": "2wiki",
+        "metadata": _item_metadata(item),
+        "memory_dir": config.get("memory_dir"),
+        "memory_update_mode": "disabled" if not enable_evolution else config.get("memory_update_mode", "heuristic"),
+        "enable_memory": enable_evolution,
+        "enable_reflection": enable_evolution and bool(config.get("enable_reflection", True)),
+        "allow_gold_feedback": allow_gold_feedback,
     }
+    if allow_gold_feedback:
+        task["gold_answer"] = item.get("answer", "")
 
     remove_stale_trajectory(Path(config["traj_dir"]), task["id"])
     logger.info("[%d/%d] q=%s", index + 1, total, question[:80])
     started_at = time.time()
-    result = task_runner.run_task(
-        task,
-        max_steps=int(config["max_steps"]),
-        llm_base_url=str(config["llm_url"]),
-        model_name=str(config["model"]),
-        trajectory_dir=str(config["traj_dir"]),
-    )
+
+    enable_retry = config.get("enable_confidence_retry", False)
+    if enable_retry:
+        result = task_runner.run_task_with_retry(
+            task,
+            max_steps=int(config["max_steps"]),
+            llm_base_url=str(config["llm_url"]),
+            model_name=str(config["model"]),
+            trajectory_dir=str(config["traj_dir"]),
+        )
+    else:
+        result = task_runner.run_task(
+            task,
+            max_steps=int(config["max_steps"]),
+            llm_base_url=str(config["llm_url"]),
+            model_name=str(config["model"]),
+            trajectory_dir=str(config["traj_dir"]),
+        )
     return index, _result_row(index, item, result, time.time() - started_at)
 
 
@@ -189,6 +222,22 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--start", type=int, default=0, help="Start index in the dataset")
     parser.add_argument("--end", type=int, default=None, help="End index in the dataset, exclusive")
     parser.add_argument("--concurrency", type=int, default=1, help="Number of samples to evaluate concurrently")
+    parser.add_argument(
+        "--agent-mode",
+        choices=("raw", "evolved"),
+        default="evolved",
+        help="raw disables reflection and memory; evolved enables self-evolution modules",
+    )
+    parser.add_argument("--memory-dir", type=Path, default=None, help="Long-term memory directory/path; default is <run_dir>/memory")
+    parser.add_argument(
+        "--memory-update-mode",
+        choices=("heuristic", "gold", "disabled"),
+        default="heuristic",
+        help="heuristic uses failure signals only; gold may use labels and is for offline training/open eval only",
+    )
+    parser.add_argument("--allow-gold-feedback", action="store_true", help="Expose gold answer to the memory updater for offline evolution")
+    parser.add_argument("--disable-reflection", action="store_true", help="Disable reflection hints while keeping memory recall if evolved")
+    parser.add_argument("--enable-confidence-retry", action="store_true", help="Enable LLM-as-Judge confidence retry for low-confidence answers")
     parser.add_argument(
         "--result-format",
         choices=("full", "minimal"),
@@ -304,6 +353,11 @@ def main() -> None:
         "model": args.model,
         "max_steps": args.max_steps,
         "concurrency": concurrency,
+        "agent_mode": args.agent_mode,
+        "memory_dir": args.memory_dir or (run_dir / "memory"),
+        "memory_update_mode": args.memory_update_mode,
+        "allow_gold_feedback": bool(args.allow_gold_feedback),
+        "enable_reflection": not args.disable_reflection,
         "result_format": args.result_format,
         "started_at": started_at,
         "args": args,
@@ -319,6 +373,12 @@ def main() -> None:
         "llm_url": args.llm_url,
         "model": args.model,
         "max_steps": args.max_steps,
+        "agent_mode": args.agent_mode,
+        "memory_dir": str(args.memory_dir or (run_dir / "memory")),
+        "memory_update_mode": args.memory_update_mode,
+        "allow_gold_feedback": bool(args.allow_gold_feedback),
+        "enable_reflection": not args.disable_reflection,
+        "enable_confidence_retry": bool(getattr(args, "enable_confidence_retry", False)),
     }
 
     for index, item in selected:

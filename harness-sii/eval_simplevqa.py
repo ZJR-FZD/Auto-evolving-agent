@@ -86,7 +86,21 @@ def _build_instruction(sample: dict) -> str:
     )
 
 
-def _sample_to_task(sample: dict, data_root: Path) -> dict:
+def _sample_metadata(sample: dict) -> dict:
+    vqa_category = sample.get("vqa_category")
+    if not isinstance(vqa_category, dict):
+        vqa_category = {}
+    return {
+        "language": sample.get("language", ""),
+        "source": sample.get("source", ""),
+        "task_category": vqa_category.get("task_category", ""),
+        "subject_category": vqa_category.get("subject_category", ""),
+        "entity_class": vqa_category.get("entity_class", ""),
+        "original_category": sample.get("original_category", ""),
+    }
+
+
+def _sample_to_task(sample: dict, data_root: Path, config: dict | None = None) -> dict:
     data_id = int(sample["data_id"])
     image_path = data_root / sample["image"]
     if not image_path.exists():
@@ -95,12 +109,25 @@ def _sample_to_task(sample: dict, data_root: Path) -> dict:
     with image_path.open("rb") as f:
         image_b64 = base64.b64encode(f.read()).decode()
 
-    return {
+    config = config or {}
+    enable_evolution = str(config.get("agent_mode", "evolved")).lower() != "raw"
+    allow_gold_feedback = bool(config.get("allow_gold_feedback", False))
+    task = {
         "id": f"simplevqa_{data_id}",
         "instruction": _build_instruction(sample),
         "image_b64": image_b64,
         "image_url": sample.get("image_url"),
+        "task_family": "simplevqa",
+        "metadata": _sample_metadata(sample),
+        "memory_dir": config.get("memory_dir"),
+        "memory_update_mode": "disabled" if not enable_evolution else config.get("memory_update_mode", "heuristic"),
+        "enable_memory": enable_evolution,
+        "enable_reflection": enable_evolution and bool(config.get("enable_reflection", True)),
+        "allow_gold_feedback": allow_gold_feedback,
     }
+    if allow_gold_feedback:
+        task["gold_answer"] = sample.get("answer", "")
+    return task
 
 
 def _result_row(sample: dict, result: dict) -> dict:
@@ -124,6 +151,10 @@ def _result_row(sample: dict, result: dict) -> dict:
         "contains_gold": bool(norm_gold and norm_gold in norm_pred),
         "steps": result["steps"],
         "trajectory_path": result["trajectory_path"],
+        "stats": result.get("stats", {}),
+        "signals": result.get("signals", {}),
+        "memory_recalled": result.get("memory_recalled", []),
+        "memory_written": result.get("memory_written", []),
         "image_url": sample.get("image_url"),
         "source": sample.get("source"),
         "language": sample.get("language"),
@@ -171,19 +202,31 @@ def _run_one_sample(payload: tuple[int, int, dict, dict]) -> tuple[int, dict]:
     data_id = int(sample["data_id"])
 
     import task_runner
+    from agent_memory import ShortTermMemory
 
     patch_task_runner_tool_args(task_runner)
 
-    task = _sample_to_task(sample, Path(config["data_root"]))
+    task = _sample_to_task(sample, Path(config["data_root"]), config)
     _remove_stale_trajectory(Path(config["traj_dir"]), task["id"])
     print(f"[{index}/{total}] run data_id={data_id} task_id={task['id']}", flush=True)
-    result = task_runner.run_task(
-        task,
-        max_steps=int(config["max_steps"]),
-        llm_base_url=str(config["llm_url"]),
-        model_name=str(config["model"]),
-        trajectory_dir=str(config["traj_dir"]),
-    )
+
+    enable_retry = config.get("enable_confidence_retry", False)
+    if enable_retry:
+        result = task_runner.run_task_with_retry(
+            task,
+            max_steps=int(config["max_steps"]),
+            llm_base_url=str(config["llm_url"]),
+            model_name=str(config["model"]),
+            trajectory_dir=str(config["traj_dir"]),
+        )
+    else:
+        result = task_runner.run_task(
+            task,
+            max_steps=int(config["max_steps"]),
+            llm_base_url=str(config["llm_url"]),
+            model_name=str(config["model"]),
+            trajectory_dir=str(config["traj_dir"]),
+        )
     return index, _result_row(sample, result)
 
 
@@ -204,11 +247,27 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--offset", type=int, default=0, help="Skip the first N samples")
     parser.add_argument("--concurrency", type=int, default=1, help="Number of samples to evaluate concurrently")
     parser.add_argument(
+        "--agent-mode",
+        choices=("raw", "evolved"),
+        default="evolved",
+        help="raw disables reflection and memory; evolved enables the self-evolution modules",
+    )
+    parser.add_argument("--memory-dir", type=Path, default=None, help="Long-term memory directory/path; default is <run_dir>/memory")
+    parser.add_argument(
+        "--memory-update-mode",
+        choices=("heuristic", "gold", "disabled"),
+        default="heuristic",
+        help="heuristic uses failure signals only; gold may use labels and is for offline training/open eval only",
+    )
+    parser.add_argument("--allow-gold-feedback", action="store_true", help="Expose gold answer to the memory updater for offline evolution")
+    parser.add_argument("--disable-reflection", action="store_true", help="Disable reflection hints while keeping memory recall if evolved")
+    parser.add_argument(
         "--result-format",
         choices=("full", "minimal"),
         default="minimal",
         help="full keeps metrics/debug fields; minimal writes only index/instruction/image/answer/pred",
     )
+    parser.add_argument("--enable-confidence-retry", action="store_true", help="Enable LLM-as-Judge confidence retry for low-confidence answers")
     parser.add_argument("--resume", action="store_true", help="Resume an existing --run-name by skipping indices already in predictions.jsonl")
     parser.add_argument("--overwrite", action="store_true", help="Delete an existing --run-name before running")
     return parser.parse_args()
@@ -262,6 +321,11 @@ def main() -> None:
         "model": args.model,
         "max_steps": args.max_steps,
         "concurrency": max(1, int(args.concurrency)),
+        "agent_mode": args.agent_mode,
+        "memory_dir": args.memory_dir or (run_dir / "memory"),
+        "memory_update_mode": args.memory_update_mode,
+        "allow_gold_feedback": bool(args.allow_gold_feedback),
+        "enable_reflection": not args.disable_reflection,
         "result_format": args.result_format,
         "started_at": started_at,
         "args": args,
@@ -290,6 +354,12 @@ def main() -> None:
         "llm_url": args.llm_url,
         "model": args.model,
         "max_steps": args.max_steps,
+        "agent_mode": args.agent_mode,
+        "memory_dir": str(args.memory_dir or (run_dir / "memory")),
+        "memory_update_mode": args.memory_update_mode,
+        "allow_gold_feedback": bool(args.allow_gold_feedback),
+        "enable_reflection": not args.disable_reflection,
+        "enable_confidence_retry": bool(args.enable_confidence_retry),
     }
 
     concurrency = max(1, int(args.concurrency))

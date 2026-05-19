@@ -1,4 +1,4 @@
-“/inspire/qb-ilm2/project/26summer-camp-01/26210893/AutoResearchClaw”下是可以借鉴的开源项目，主要要借鉴一些我需要的成熟的模块。现在我要在当前目录下进行项目优化，主要是“/inspire/qb-ilm2/project/26summer-camp-01/26210893/harness-sii”下的程序。
+“/inspire/qb-ilm2/project/26summer-camp-01/26210893/AutoResearchClaw”下是可以借鉴的开源项目，主要要借鉴一些我需要的成熟的模块。现在我要在当前目录下进行项目优化，主要是“/inspire/qb-ilm2/project/26summer-camp-01/26210893/harness-sii”下的程序。通过git status可以看到我已经改动新增的模块，你要接着优化来满足需求。
 
 课题名称：自进化的任务求解智能体
 课题亮点：当前大多数 LLM 应用只是单轮或多轮对话，缺乏自主行动与反思能力。真正有价值的智能体应当能够： 自主规划：把一个复杂任务拆解为可执行的子步骤； 调用工具：通过联网搜索、浏览器导航等完成每个步骤； 自我反思与进化：对失败的尝试进行总结，修正策略，再次尝试，而不是无脑重试。
@@ -41,6 +41,7 @@
 5、来自 SimpleVQA 与 2wiki 的 200 条开源评测集数据。见/inspire/qb-ilm2/project/26summer-camp-01/26210893/harness-sii/eval_simplevqa.py、/inspire/qb-ilm2/project/26summer-camp-01/26210893/harness-sii/run_2wiki.py
 6、一套完整的 Harness 智能体系统
 7、最终打榜闭源数据集，见/inspire/qb-ilm2/project/26summer-camp-01/26210893/harness-sii/run_benchmark.py
+注意打榜的数据集不可以做测试时进化，只是可以llm as a judge。另外打榜的数据集里有多模态的数据，可能会有解析图片有问题的情况。“进化”的体现也非常重要。
 
 现在给的原始框架的测评simplevqa的命令如下，开两个终端：
 conda activate pegp
@@ -58,3 +59,22 @@ python -m sglang.launch_server \
 --enforce-disable-flashinfer-allreduce-fusion \
 --disable-custom-all-reduce
 然后运行评测程序
+
+可能用到的信息：
+允许作为训练数据使用
+测试时不允许直接将模型输出和gold answer比较来判断失败，防止模型为了偷分一直重试，这样没有意义。允许部署一个Qwen3-32B Judge模型根据记忆，当前模型的推理路径等线索来做LLM-as-Judge，judge时不允许输入gold answer(label/ground truth)。但是记忆和反思机制在训练集上进化时（包括训练和非训练方式）允许将gold answer暴露给Agent系统。
+允许在2wiki和SimpleVQA测试集问题上做自蒸馏参数微调，不允许在打榜数据上进行自蒸馏参数微调。
+允许 test-time self-evolution / test-time memory update，但如同上文所述，只允许LLM-as-Judge等辅助手段，不能使用ground truth。
+训练集可以自由选用，只要不与测试集重合、不包含测试题答案泄露，不构造与测试集高度重合的数据就可以使用任意公开数据或其他数据。
+推理引擎限制Sglang，其他不限制，我们只比较进化前后的推理时间优化幅度，但也会统计大家的推理时间的分布，如果落后于平均水平太多，也会适当减分。最后需要报告的是case轨迹，不需要报告wall-clock time、平均token数、工具调用次数，以及配置。
+允许自建reranker/embedding rerank，但这些只能算作原始无进化agent的性能。
+测试时允许多次运行同一个样本进行单次LLM-as-Judge，不能基于LLM selector等从多个选项中选择答案。但上述时间和token花费需要体现在轨迹中。
+测试集整体只允许跑一次，你可以设置在处理单个样本时，遇到低置信的样本，重复跑，直到LLM-as-Judge通过（若有）。但请注意，如果你已经处理过该case，无论通不通过，就不允许再回头看。因为既然已经允许test-time-learning，模型看完整个测试集后就容易学会测试集分布，再回头重跑有偷分嫌疑。如果想跑多次取最好结果的话，每次在测试集上运行时获得的经验，记忆等数据必须清空。
+
+可能遇到的问题/可能借鉴的解决方案
+Too1 cal1 泄漏浪费步数/检测 reasoning_content 中的<tool_cal1>，解析出来当作正常 tool_cal1执行
+跑满步数无答案/在最后 2-3步强制要求模型输出答案(修改 prompt 或注入提示)
+没有Plan/System prompt 加入"先分解问题为子步骤"的要求
+没有 Reflection/每次搜索结果返回后，要求模型评估进展
+SEC被封还反复尝试/在 prompt 中提示"SEC.gov无法直接访问，请用搜索引擎获取摘要"
+答案格式不规范/要求用<answer>xxx</answer>包裹，脚本提取纯净答案
