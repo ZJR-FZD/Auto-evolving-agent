@@ -4,52 +4,51 @@ Batch evaluation entry point for the local SimpleVQA subset.
 This script wraps task_runner.run_task, which evaluates one agent task at a
 time. It writes one JSON object per sample to the predictions file and prints a
 small aggregate summary at the end.
+
+python harness-sii/eval_simplevqa.py \
+    --dataset datasets/simpleVQA/SimpleVQA.jsonl \
+    --data-root datasets/simpleVQA \
+    --output-root harness-sii/runs \
+    --run-name simplevqa_raw \
+    --llm-url http://127.0.0.1:8000/v1 \
+    --model Qwen3.5-9B \
+    --max-steps 20 \
+    --concurrency 2 \
+    --result-format minimal \
+    --overwrite
 """
 
 import argparse
 import base64
 import concurrent.futures
-import json
-import os
 import re
+import time
 from pathlib import Path
-from typing import Iterable
 
+from eval_utils import (
+    DEFAULT_LLM_BASE_URL,
+    DEFAULT_MAX_STEPS,
+    DEFAULT_MODEL_NAME,
+    DEFAULT_OUTPUT_ROOT,
+    append_jsonl,
+    concat_trajectories,
+    format_output_row,
+    load_done_by_index,
+    patch_task_runner_tool_args,
+    prepare_run_dir,
+    read_jsonl,
+    run_paths,
+    write_jsonl,
+    write_metadata,
+)
 
-DEFAULT_DATA_ROOT = Path(__file__).resolve().parents[1] / "simpleVQA"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DATA_ROOT = (
+    REPO_ROOT / "datasets" / "simpleVQA"
+    if (REPO_ROOT / "datasets" / "simpleVQA").exists()
+    else REPO_ROOT / "simpleVQA"
+)
 DEFAULT_DATA_FILE = DEFAULT_DATA_ROOT / "SimpleVQA.jsonl"
-DEFAULT_OUT_FILE = Path(__file__).resolve().parent / "outputs" / "simplevqa_predictions.jsonl"
-DEFAULT_TRAJ_DIR = Path(__file__).resolve().parent / "trajectories_simplevqa"
-DEFAULT_LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://127.0.0.1:8000/v1")
-DEFAULT_MODEL_NAME = os.getenv("MODEL_NAME", "Qwen3.5-9B")
-DEFAULT_MAX_STEPS = int(os.getenv("MAX_STEPS", "20"))
-
-
-def _read_jsonl(path: Path) -> list[dict]:
-    rows: list[dict] = []
-    with path.open("r", encoding="utf-8") as f:
-        for line_no, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"Bad JSON at {path}:{line_no}: {exc}") from exc
-    return rows
-
-
-def _write_jsonl(path: Path, rows: Iterable[dict]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        for row in rows:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-
-def _append_jsonl(path: Path, row: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def _normalize_answer(text: str) -> str:
@@ -70,17 +69,6 @@ def _contains_gold(row: dict) -> bool:
     norm_pred = _normalize_answer(row.get("pred", row.get("prediction", "")))
     norm_gold = _normalize_answer(row.get("answer", ""))
     return bool(norm_gold and norm_gold in norm_pred)
-
-
-def _load_done(path: Path) -> dict[int, dict]:
-    if not path.exists():
-        return {}
-    done: dict[int, dict] = {}
-    for row in _read_jsonl(path):
-        data_id = row.get("data_id", row.get("index"))
-        if data_id is not None:
-            done[int(data_id)] = row
-    return done
 
 
 def _build_instruction(sample: dict) -> str:
@@ -166,36 +154,6 @@ def _error_row(sample: dict, error: str) -> dict:
     }
 
 
-def _format_output_row(row: dict, result_format: str) -> dict:
-    if result_format == "minimal":
-        return {
-            "index": row.get("index", row.get("data_id")),
-            "instruction": row.get("instruction", ""),
-            "image": row.get("image", ""),
-            "answer": row.get("answer", ""),
-            "pred": row.get("pred", row.get("prediction", "")),
-        }
-    return row
-
-
-def _patch_task_runner_tool_args(task_runner_module) -> None:
-    """Normalize declared tool-schema args to the existing tool implementation.
-
-    task_runner exposes search_image(image_url=...) to the model, while
-    tools.search_tool.search_image currently accepts image=.... Keeping this
-    adapter in the eval wrapper avoids editing the baseline task_runner file.
-    """
-    search_image = task_runner_module.search_image
-
-    def _call_search_image(args: dict):
-        normalized = dict(args)
-        if "image" not in normalized and "image_url" in normalized:
-            normalized["image"] = normalized.pop("image_url")
-        return search_image(**normalized)
-
-    task_runner_module.TOOL_FN_MAP["search_image"] = _call_search_image
-
-
 def _remove_stale_trajectory(traj_dir: Path, task_id: str) -> None:
     traj_path = traj_dir / f"{task_id}.jsonl"
     if traj_path.exists():
@@ -214,7 +172,7 @@ def _run_one_sample(payload: tuple[int, int, dict, dict]) -> tuple[int, dict]:
 
     import task_runner
 
-    _patch_task_runner_tool_args(task_runner)
+    patch_task_runner_tool_args(task_runner)
 
     task = _sample_to_task(sample, Path(config["data_root"]))
     _remove_stale_trajectory(Path(config["traj_dir"]), task["id"])
@@ -231,39 +189,88 @@ def _run_one_sample(payload: tuple[int, int, dict, dict]) -> tuple[int, dict]:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Evaluate SimpleVQA with harness-sii/task_runner.py")
-    parser.add_argument("--data-file", type=Path, default=DEFAULT_DATA_FILE, help="SimpleVQA JSONL file")
+    parser.add_argument("--dataset", "--data-file", dest="data_file", type=Path, default=DEFAULT_DATA_FILE, help="SimpleVQA JSONL file")
     parser.add_argument("--data-root", type=Path, default=DEFAULT_DATA_ROOT, help="Root directory for local images")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUT_FILE, help="Prediction JSONL output path")
-    parser.add_argument("--traj-dir", type=Path, default=DEFAULT_TRAJ_DIR, help="Trajectory output directory")
+    parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT, help="Root directory for timestamped run outputs")
+    parser.add_argument("--run-name", default=None, help="Run directory name; defaults to simplevqa_YYYYMMDD_HHMMSS")
+    parser.add_argument("--out", type=Path, default=None, help="Deprecated: explicit prediction JSONL path")
+    parser.add_argument("--traj-dir", type=Path, default=None, help="Deprecated: explicit trajectory directory")
     parser.add_argument("--llm-url", default=DEFAULT_LLM_BASE_URL, help="SGLang OpenAI-compatible base URL")
     parser.add_argument("--model", default=DEFAULT_MODEL_NAME, help="Served model name")
     parser.add_argument("--max-steps", type=int, default=DEFAULT_MAX_STEPS, help="Maximum agent loop steps per sample")
+    parser.add_argument("--start", type=int, default=None, help="Start index in the dataset")
+    parser.add_argument("--end", type=int, default=None, help="End index in the dataset, exclusive")
     parser.add_argument("--limit", type=int, default=None, help="Evaluate only the first N samples")
     parser.add_argument("--offset", type=int, default=0, help="Skip the first N samples")
     parser.add_argument("--concurrency", type=int, default=1, help="Number of samples to evaluate concurrently")
     parser.add_argument(
         "--result-format",
         choices=("full", "minimal"),
-        default="full",
+        default="minimal",
         help="full keeps metrics/debug fields; minimal writes only index/instruction/image/answer/pred",
     )
-    parser.add_argument("--resume", action="store_true", help="Skip data_id values already present in --out")
-    parser.add_argument("--overwrite", action="store_true", help="Overwrite --out before running")
+    parser.add_argument("--resume", action="store_true", help="Resume an existing --run-name by skipping indices already in predictions.jsonl")
+    parser.add_argument("--overwrite", action="store_true", help="Delete an existing --run-name before running")
     return parser.parse_args()
 
 
 def main() -> None:
     args = _parse_args()
+    started_at = time.time()
 
-    samples = _read_jsonl(args.data_file)
-    samples = samples[args.offset:]
-    if args.limit is not None:
-        samples = samples[: args.limit]
+    all_samples = read_jsonl(args.data_file)
+    if args.start is not None or args.end is not None:
+        start = args.start or 0
+        end = args.end if args.end is not None else len(all_samples)
+    else:
+        start = args.offset
+        end = len(all_samples) if args.limit is None else args.offset + args.limit
+    samples = all_samples[start:end]
 
-    if args.overwrite and args.out.exists():
-        args.out.unlink()
+    run_dir = prepare_run_dir(
+        "simplevqa",
+        args.output_root,
+        args.run_name,
+        resume=args.resume,
+        overwrite=args.overwrite,
+    )
+    paths = run_paths(run_dir)
+    out_path = args.out or paths["predictions"]
+    progress_path = paths["progress"]
+    traj_dir = args.traj_dir or paths["trajectory_dir"]
+    traj_dir.mkdir(parents=True, exist_ok=True)
 
-    done = _load_done(args.out) if args.resume else {}
+    if out_path.exists() and args.overwrite:
+        out_path.unlink()
+    elif out_path.exists() and not args.resume:
+        raise FileExistsError(f"Output already exists: {out_path}. Use --resume or --overwrite.")
+
+    if progress_path.exists() and args.overwrite:
+        progress_path.unlink()
+
+    metadata = {
+        "dataset": "simplevqa",
+        "dataset_path": args.data_file,
+        "data_root": args.data_root,
+        "run_dir": run_dir,
+        "prediction_path": out_path,
+        "progress_path": progress_path,
+        "trajectory_dir": traj_dir,
+        "trajectory_jsonl": paths["trajectories"],
+        "selection": {"start": start, "end": end, "total_dataset_rows": len(all_samples)},
+        "llm_url": args.llm_url,
+        "model": args.model,
+        "max_steps": args.max_steps,
+        "concurrency": max(1, int(args.concurrency)),
+        "result_format": args.result_format,
+        "started_at": started_at,
+        "args": args,
+    }
+    write_metadata(paths["metadata"], metadata)
+
+    done = {}
+    if args.resume:
+        done = load_done_by_index(progress_path) or load_done_by_index(out_path)
     new_results: list[dict] = []
     pending: list[tuple[int, dict]] = []
 
@@ -275,11 +282,11 @@ def main() -> None:
         pending.append((index, sample))
 
     if args.overwrite:
-        _clear_pending_trajectories(args.traj_dir, pending)
+        _clear_pending_trajectories(traj_dir, pending)
 
     config = {
         "data_root": str(args.data_root),
-        "traj_dir": str(args.traj_dir),
+        "traj_dir": str(traj_dir),
         "llm_url": args.llm_url,
         "model": args.model,
         "max_steps": args.max_steps,
@@ -293,7 +300,8 @@ def main() -> None:
             except Exception as exc:  # noqa: BLE001
                 row = _error_row(sample, f"{type(exc).__name__}: {exc}")
                 print(f"[{index}/{len(samples)}] error data_id={sample.get('data_id')}: {row['error']}")
-            _append_jsonl(args.out, _format_output_row(row, args.result_format))
+            append_jsonl(progress_path, row)
+            append_jsonl(out_path, format_output_row(row, args.result_format))
             new_results.append(row)
     else:
         print(f"Running with concurrency={concurrency}")
@@ -316,7 +324,8 @@ def main() -> None:
                 except Exception as exc:  # noqa: BLE001
                     row = _error_row(sample, f"{type(exc).__name__}: {exc}")
                     print(f"error data_id={sample.get('data_id')}: {row['error']}")
-                _append_jsonl(args.out, _format_output_row(row, args.result_format))
+                append_jsonl(progress_path, row)
+                append_jsonl(out_path, format_output_row(row, args.result_format))
                 new_results.append(row)
         except KeyboardInterrupt:
             print("Interrupted, cancelling pending tasks...")
@@ -333,15 +342,35 @@ def main() -> None:
 
     all_rows = list(done.values()) + new_results
     all_rows.sort(key=lambda row: row.get("data_id", row.get("index", 0)))
-    _write_jsonl(args.out, (_format_output_row(row, args.result_format) for row in all_rows))
+    write_jsonl(out_path, (format_output_row(row, args.result_format) for row in all_rows))
+    concat_trajectories(
+        traj_dir,
+        (row.get("task_id", f"simplevqa_{row.get('data_id', row.get('index'))}") for row in all_rows),
+        paths["trajectories"],
+    )
 
     total = len(all_rows)
     exact = sum(1 for row in all_rows if row.get("exact_match", _is_exact(row)))
     contains = sum(1 for row in all_rows if row.get("contains_gold", _contains_gold(row)))
     errors = sum(1 for row in all_rows if row.get("error"))
+    summary = {
+        "total": total,
+        "errors": errors,
+        "exact_match": exact,
+        "contains_gold": contains,
+        "finished_at": time.time(),
+        "elapsed_seconds": time.time() - started_at,
+    }
+    metadata["summary"] = summary
+    write_metadata(paths["metadata"], metadata)
+
     print("=" * 60)
-    print(f"Output:        {args.out}")
-    print(f"Trajectories:  {args.traj_dir}")
+    print(f"Run dir:       {run_dir}")
+    print(f"Output:        {out_path}")
+    print(f"Progress:      {progress_path}")
+    print(f"Trajectories:  {traj_dir}")
+    print(f"Trajectory all:{paths['trajectories']}")
+    print(f"Metadata:      {paths['metadata']}")
     print(f"Total:         {total}")
     print(f"Errors:        {errors}")
     print(f"Exact match:   {exact}/{total} = {exact / total:.2%}" if total else "Exact match:   n/a")
