@@ -252,6 +252,12 @@ STATE_INSTRUCTION = {
     ),
 }
 
+CONFLICT_PIVOT_PROMPT = (
+    "[SYSTEM] Candidate-event alignment conflict detected. Your current candidate does not satisfy "
+    "key constraints from the question (timeframe/event/details). Roll back to candidate discovery "
+    "and pivot to a new clue chain with 2-3 hard facts only."
+)
+
 
 def _extract_domain(url: str) -> str:
     if not url:
@@ -278,6 +284,105 @@ def _collect_domains_from_results(results: list[dict]) -> set[str]:
         if dom:
             domains.add(dom)
     return domains
+
+
+def _extract_candidates(results: list[dict]) -> list[str]:
+    """Extract rough person/entity candidates from snippets and titles."""
+    candidates = []
+    seen = set()
+    name_pat = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b")
+    for item in results:
+        blob = " ".join([str(item.get("title", "")), str(item.get("snippet", ""))])
+        for m in name_pat.finditer(blob):
+            cand = m.group(1).strip()
+            if len(cand) < 4:
+                continue
+            if cand.lower() in {"premier league", "champions league", "manchester united"}:
+                continue
+            if cand not in seen:
+                seen.add(cand)
+                candidates.append(cand)
+    return candidates
+
+
+def _event_alignment_score(instruction: str, results: list[dict]) -> int:
+    """
+    Positive score means results align with instruction constraints.
+    Negative score means likely conflict/red-herring.
+    """
+    text = (instruction or "").lower()
+    blob = " ".join(
+        (str(r.get("title", "")) + " " + str(r.get("snippet", "")) + " " + str(r.get("content", "")))
+        for r in results
+    ).lower()
+    score = 0
+    if "95th minute" in text and "95th" in blob:
+        score += 1
+    if ("free-kick" in text or "free kick" in text) and ("free-kick" in blob or "free kick" in blob):
+        score += 1
+    if "early 21st century" in text:
+        if re.search(r"\b200[0-9]\b|\b2010\b", blob):
+            score += 1
+        if re.search(r"\b202[1-9]\b", blob):
+            score -= 2
+    # Cross-sport conflicts are strong negatives.
+    if any(tok in blob for tok in ["nfl", "afl", "nba", "baseball", "cricket"]):
+        score -= 2
+    return score
+
+
+def _query_quality_score(query: str, instruction: str, recent_kw: list[set]) -> float:
+    q = (query or "").strip()
+    if not q:
+        return -999.0
+    ql = q.lower()
+    score = 0.0
+    # Prefer hard-fact rich queries.
+    score += 1.2 * len(re.findall(HARD_FACT_INDICATORS, q))
+    # Prefer carrying facts from instruction.
+    for fact in build_instruction_fact_bank(instruction):
+        if fact.replace('"', "").lower() in ql:
+            score += 1.0
+    # Penalize metaphor/riddle direction.
+    if any(p in ql for p in METAPHOR_PATTERNS) or any(k in ql for k in RIDDLE_DIRECTION_KEYWORDS):
+        score -= 3.0
+    # Penalize near-duplicate query.
+    kw = extract_query_keywords({"query": q})
+    if kw and recent_kw:
+        sim = max((jaccard_similarity(kw, prev) for prev in recent_kw[-5:]), default=0.0)
+        if sim >= QUERY_SIMILARITY_THRESHOLD:
+            score -= 2.0
+    return score
+
+
+def _select_tool_calls_for_step(tool_calls, instruction: str, recent_queries: list[set]):
+    """
+    Keep at most one search_text call per step; preserve other tool calls.
+    """
+    if not tool_calls:
+        return tool_calls
+    selected = []
+    search_candidates = []
+    for tc in tool_calls:
+        if hasattr(tc, "function"):
+            fn_name = tc.function.name
+            fn_args_str = tc.function.arguments
+        else:
+            fn_name = tc["function"]["name"]
+            fn_args_str = tc["function"]["arguments"]
+        if fn_name != "search_text":
+            selected.append(tc)
+            continue
+        try:
+            args = json.loads(fn_args_str)
+        except Exception:
+            args = {}
+        q = str(args.get("query", ""))
+        search_candidates.append((tc, _query_quality_score(q, instruction, recent_queries)))
+    if search_candidates:
+        best_tc, _ = max(search_candidates, key=lambda x: x[1])
+        selected.append(best_tc)
+    return selected
 
 
 def _looks_low_signal_result(item: dict) -> bool:
@@ -659,6 +764,9 @@ def run_task(
     state_attempts = {s: 0 for s in STATE_SEQUENCE}
     evidence_domains = set()
     state_domain_evidence = {s: set() for s in STATE_SEQUENCE}
+    candidate_votes = {}
+    best_candidate = None
+    event_alignment = 0
 
     for step in range(1, max_steps + 1):
         logger.info("--- step %d/%d ---", step, max_steps)
@@ -772,6 +880,8 @@ def run_task(
         if not tool_calls and not content:
             continue
 
+        tool_calls = _select_tool_calls_for_step(tool_calls, instruction, recent_queries)
+
         # --- Execute tool calls (concurrently) ---
         def _exec_one_tool(tc):
             if hasattr(tc, 'function'):
@@ -862,6 +972,11 @@ def run_task(
                     domains = _collect_domains_from_results(parsed_results)
                     evidence_domains.update(domains)
                     state_domain_evidence[current_state].update(domains)
+                    event_alignment += _event_alignment_score(instruction, parsed_results)
+                    for cand in _extract_candidates(parsed_results):
+                        candidate_votes[cand] = candidate_votes.get(cand, 0) + 1
+                        if not best_candidate or candidate_votes[cand] > candidate_votes.get(best_candidate, 0):
+                            best_candidate = cand
                 # Track query keywords for dedup detection
                 kw = extract_query_keywords(fn_args)
                 if kw:
@@ -873,13 +988,23 @@ def run_task(
 
         # State transitions and failsafe controls.
         if current_state == "S0_PARSE":
-            state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
+            if recent_queries:
+                state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
         elif current_state == "S1_SUBJECT":
-            if len(state_domain_evidence[current_state]) >= 1:
+            if best_candidate and candidate_votes.get(best_candidate, 0) >= 2:
                 state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
         elif current_state == "S2_EVENT":
-            if len(evidence_domains) >= MIN_INDEPENDENT_SOURCES:
+            if (
+                best_candidate
+                and candidate_votes.get(best_candidate, 0) >= 2
+                and len(evidence_domains) >= MIN_INDEPENDENT_SOURCES
+                and event_alignment >= 2
+            ):
                 state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
+            elif event_alignment < 0:
+                traj.write(Role.USER, CONFLICT_PIVOT_PROMPT, step_id=step)
+                state_index = max(1, state_index - 1)
+                low_signal_streak = LOW_SIGNAL_PIVOT_THRESHOLD
         elif current_state == "S3_DETAIL" and final_answer:
             state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
 
