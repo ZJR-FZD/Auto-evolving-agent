@@ -1,0 +1,38 @@
+{
+  "dataset_path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/datasets/2wiki.jsonl",
+  "trajectory_dir": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full",
+  "dataset_count": 100,
+  "trajectory_file_count": 100,
+  "matched_prediction_count": 95,
+  "missing_prediction_count": 5,
+  "missing_prediction_examples": [
+    {
+      "index": 9,
+      "id": "49745b0e0bdb11eba7f7acde48001122"
+    },
+    {
+      "index": 50,
+      "id": "6a8d44980bb011ebab90acde48001122"
+    },
+    {
+      "index": 76,
+      "id": "edbeebce0bdc11eba7f7acde48001122"
+    },
+    {
+      "index": 95,
+      "id": "ad51948e0bdb11eba7f7acde48001122"
+    },
+    {
+      "index": 96,
+      "id": "0fe8976c0bde11eba7f7acde48001122"
+    }
+  ],
+  "raw_result_file": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/submit_2wiki_baseline/2wiki_raw_results.jsonl",
+  "final_result_file": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/submit_2wiki_baseline/2wiki_final_results.jsonl",
+  "merged_trajectory_file": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/submit_2wiki_baseline/2wiki_trajectories.jsonl",
+  "raw_result_lines": 100,
+  "final_result_lines": 100,
+  "merged_trajectory_lines": 945,
+  "raw_format_errors": [],
+  "final_format_errors": []
+}

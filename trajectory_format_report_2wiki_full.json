@@ -1,0 +1,1312 @@
+{
+  "summary": {
+    "traj_dir": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full",
+    "num_files": 100,
+    "total_lines": 945,
+    "total_errors": 0,
+    "total_warnings": 0,
+    "bad_files": []
+  },
+  "files": [
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/0c93a286088d11ebbd70ac1f6bf848b6.jsonl",
+      "line_count": 12,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 4
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/0d0f4fcb084d11ebbd56ac1f6bf848b6.jsonl",
+      "line_count": 10,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 4
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/0fe8976c0bde11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/1504ac100baf11ebab90acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/157b8bc908b211ebbd85ac1f6bf848b6.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 3
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/174a146809a411ebbdb0ac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/1751bd1c0bde11eba7f7acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/20c037940bb011ebab90acde48001122.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 2
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/29c7fb2408fb11ebbdacac1f6bf848b6.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/2ca6a4ee0bdd11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/2cacbdba086611ebbd5eac1f6bf848b6.jsonl",
+      "line_count": 13,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 5
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/2dd95ad6088711ebbd6dac1f6bf848b6.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 4
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/2eb600bc08fa11ebbdacac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/2edf286508de11ebbd9eac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/30dc7514089711ebbd76ac1f6bf848b6.jsonl",
+      "line_count": 12,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 4
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/39209f360bb011ebab90acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/3b43b6b80bb011ebab90acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/3d3938f80bdd11eba7f7acde48001122.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 2
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/3ec4232609bf11ebbdb0ac1f6bf848b6.jsonl",
+      "line_count": 6,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 2,
+        "tool": 2
+      },
+      "step_count": 3,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/3f557398085611ebbd59ac1f6bf848b6.jsonl",
+      "line_count": 10,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 4
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/4151b86208a311ebbd7bac1f6bf848b6.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 4
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/4491ef5c0bdb11eba7f7acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/4948c4780bde11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/49745b0e0bdb11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/4d58f0fc0bdd11eba7f7acde48001122.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 2
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/5051bf4d086711ebbd5eac1f6bf848b6.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/5373fba40bdc11eba7f7acde48001122.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 2
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/59cd6e33086a11ebbd5fac1f6bf848b6.jsonl",
+      "line_count": 6,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 2,
+        "tool": 2
+      },
+      "step_count": 3,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/5a9deb5c089811ebbd77ac1f6bf848b6.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 4
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/5ec63fc00bdd11eba7f7acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/652a4d5a0bda11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/682471de097811ebbdb0ac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/6a8d44980bb011ebab90acde48001122.jsonl",
+      "line_count": 12,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 4
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/6bcfc0ad090711ebbdadac1f6bf848b6.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 4
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/6e8593e008bd11ebbd8aac1f6bf848b6.jsonl",
+      "line_count": 6,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 2,
+        "tool": 2
+      },
+      "step_count": 3,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/6ed474b208be11ebbd8aac1f6bf848b6.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 4
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/6f002fda0bde11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/70d839f80bdc11eba7f7acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/733e90b908ec11ebbda7ac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/7661712e0bdb11eba7f7acde48001122.jsonl",
+      "line_count": 12,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 4
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/790b8da60bdb11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/7a74019f088611ebbd6dac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/85d470c00bdb11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/892c95800bdc11eba7f7acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/8a6cfa380bb011ebab90acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/8d3f6e620bdd11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/8d5a70320baf11ebab90acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/8e472190088811ebbd6eac1f6bf848b6.jsonl",
+      "line_count": 13,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 5
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/8ead94a20bda11eba7f7acde48001122.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 2
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/9244afbb087111ebbd63ac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/9294b6160bdc11eba7f7acde48001122.jsonl",
+      "line_count": 12,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 4
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/9365926e0bdb11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/95f49edf097a11ebbdb0ac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/9959b1e2095711ebbdaeac1f6bf848b6.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 3
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/9a3c55560bda11eba7f7acde48001122.jsonl",
+      "line_count": 12,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 4
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/9b42dc1c0bdb11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/9c36324f086c11ebbd61ac1f6bf848b6.jsonl",
+      "line_count": 6,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 2,
+        "tool": 2
+      },
+      "step_count": 3,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/9d2656380bdd11eba7f7acde48001122.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 2
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/a0b4ef89085811ebbd5bac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/a83cc706086211ebbd5dac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/aa878602099c11ebbdb0ac1f6bf848b6.jsonl",
+      "line_count": 6,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 2,
+        "tool": 2
+      },
+      "step_count": 3,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/ab80aad80bda11eba7f7acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/ad51948e0bdb11eba7f7acde48001122.jsonl",
+      "line_count": 12,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 4
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/ad59b9000bdd11eba7f7acde48001122.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 2
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/ad6da29a0bdc11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/b7cc57120bdd11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/b97dd18c0bdb11eba7f7acde48001122.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 2
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/bdbbaac40bdd11eba7f7acde48001122.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 2
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/bfcb0f25086a11ebbd5fac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/c36a23360bda11eba7f7acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/c3a01f980bdc11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/c3fc5d6d08d511ebbd98ac1f6bf848b6.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 4
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/c53cc48a089611ebbd76ac1f6bf848b6.jsonl",
+      "line_count": 10,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 4
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/c603908c08dd11ebbd9eac1f6bf848b6.jsonl",
+      "line_count": 13,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 5
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/c73eddd80bdc11eba7f7acde48001122.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/ca6ab12508b911ebbd88ac1f6bf848b6.jsonl",
+      "line_count": 10,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 4
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/cddcd14908be11ebbd8aac1f6bf848b6.jsonl",
+      "line_count": 12,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 4
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/d1ac5d2c099a11ebbdb0ac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/d1b90de308a311ebbd7cac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/d3913378097511ebbdb0ac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/d54058ef08a811ebbd7fac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/d629ef3a0bdd11eba7f7acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/d65703c2085011ebbd58ac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/d7628857089711ebbd77ac1f6bf848b6.jsonl",
+      "line_count": 9,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 3
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/d762996a089a11ebbd77ac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/d83628fc098c11ebbdb0ac1f6bf848b6.jsonl",
+      "line_count": 12,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 4
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/ddc7338e0baf11ebab90acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/de6a1315087711ebbd67ac1f6bf848b6.jsonl",
+      "line_count": 10,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 4
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/df4545ec0bdd11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/df60eb9c089211ebbd74ac1f6bf848b6.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 4
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/dfcc9a6a0bdd11eba7f7acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/e0446b82086d11ebbd62ac1f6bf848b6.jsonl",
+      "line_count": 6,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 2,
+        "tool": 2
+      },
+      "step_count": 3,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/e55687ff08d911ebbd9cac1f6bf848b6.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 4
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/e62b14f2089211ebbd74ac1f6bf848b6.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 4
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/e6c1536a0bdd11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/eb680c8a0bae11ebab90acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/edbeebce0bdc11eba7f7acde48001122.jsonl",
+      "line_count": 11,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 6,
+        "tool": 3
+      },
+      "step_count": 7,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/f94860b00bdc11eba7f7acde48001122.jsonl",
+      "line_count": 8,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 4,
+        "tool": 2
+      },
+      "step_count": 5,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/f981d2b7087911ebbd67ac1f6bf848b6.jsonl",
+      "line_count": 12,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 5,
+        "tool": 5
+      },
+      "step_count": 6,
+      "errors": [],
+      "warnings": []
+    },
+    {
+      "path": "/inspire/qb-ilm2/project/26summer-camp-01/26210830/harness-sii/trajectories_baseline_2wiki_full/fd8bacee097f11ebbdb0ac1f6bf848b6.jsonl",
+      "line_count": 7,
+      "role_counter": {
+        "system": 1,
+        "user": 1,
+        "assistant": 3,
+        "tool": 2
+      },
+      "step_count": 4,
+      "errors": [],
+      "warnings": []
+    }
+  ]
+}

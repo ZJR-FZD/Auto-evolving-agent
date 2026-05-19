@@ -1,0 +1,9 @@
+{
+  "ok": false,
+  "error": "one or more result files are missing",
+  "missing": {
+    "rule_reflection": "results/reflection_2wiki_full.jsonl",
+    "qwen3_30b_a3b_critic_reflection": "results/reflection_qwen3_30b_a3b_2wiki_full.jsonl"
+  },
+  "how_to_run": "Run the corresponding reflection evaluation first, then rerun compare_runs.py. For critic mode use run_reflection_2wiki_qwen3_30b_a3b.py or run_reflection_simplevqa_qwen3_30b_a3b.py."
+}

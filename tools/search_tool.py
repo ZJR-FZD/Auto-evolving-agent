@@ -29,10 +29,11 @@ Each result dict::
 
 from __future__ import annotations
 
+import json
 import logging
-import mimetypes
 import os
-from pathlib import Path
+import re
+import time
 from typing import Optional
 
 import requests
@@ -43,12 +44,27 @@ logger = logging.getLogger("harness.tools.search")
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-# Proxy mode (recommended for the air-gapped GPU host).
-SEARCH_PROXY_URL    = os.getenv("SEARCH_PROXY_URL", "https://nat2-notebook-inspire.sii.edu.cn/ws-7c23bd1d-9bae-4238-803a-737a35480e18/project-39fbffc7-dcca-4fb4-b43a-2f69f72f7e52/user-37373cef-1fa2-4dbb-ab3e-5c803eb41384/vscode/3c98f013-c5a7-4656-b5d9-37c8b26493ad/8c9601c0-e5ca-4c32-8e55-4aac78cc4e09/proxy/1227/").rstrip("/")
+def _clean_env_url(value: str) -> str:
+    """Normalize proxy URLs copied from notebook/vscode pages.
+
+    The most common failure here is a line break inside the URL, which becomes
+    ``%0A`` after requests encodes it and causes proxy 404s.  Keep this helper
+    local and deterministic so the GPU worker only uses the caller's exported
+    URL, never someone else's hard-coded tunnel.
+    """
+    return re.sub(r"\s+", "", str(value or "")).rstrip("/")
+
+
+# Proxy mode (recommended for the air-gapped GPU host).  Intentionally no
+# default tunnel URL: every user/session has a different nat2 notebook path.
+SEARCH_PROXY_URL    = _clean_env_url(os.getenv("SEARCH_PROXY_URL", ""))
 SEARCH_PROXY_TOKEN  = os.getenv("SEARCH_PROXY_TOKEN", "") or os.getenv(
     "PROXY_API_TOKEN", ""
 )
 PROXY_HTTP_TIMEOUT  = float(os.getenv("SEARCH_PROXY_TIMEOUT", "120"))
+PROXY_RETRIES       = int(os.getenv("SEARCH_PROXY_RETRIES", "1"))
+PROXY_RETRY_BACKOFF = float(os.getenv("SEARCH_PROXY_RETRY_BACKOFF", "1.0"))
+PROXY_FAST_FALLBACK_TIMEOUT = float(os.getenv("SEARCH_PROXY_FAST_FALLBACK_TIMEOUT", "4"))
 
 # When SEARCH_PROXY_URL points at a 3rd-party tunnel (vscode.dev / Codespaces
 # preview / cloudflared / ngrok), SSL verification or extra headers may be
@@ -59,8 +75,7 @@ SEARCH_PROXY_VERIFY_SSL = os.getenv("SEARCH_PROXY_VERIFY_SSL", "true").lower() n
     "0", "false", "no"
 )
 try:
-    import json as _json
-    SEARCH_PROXY_EXTRA_HEADERS: dict = _json.loads(
+    SEARCH_PROXY_EXTRA_HEADERS: dict = json.loads(
         os.getenv("SEARCH_PROXY_EXTRA_HEADERS", "") or "{}"
     )
     if not isinstance(SEARCH_PROXY_EXTRA_HEADERS, dict):
@@ -68,10 +83,10 @@ try:
 except Exception:  # noqa: BLE001
     SEARCH_PROXY_EXTRA_HEADERS = {}
 
-# Direct mode (only used when SEARCH_PROXY_URL is empty).
-SERPER_API_KEY      = os.getenv("SERPER_API_KEY", "a42e8b4adb370b5c866a2c6feb870641691c5901")
-JINA_API_KEY        = os.getenv("JINA_API_KEY", "jina_27b632dc368a4d878d77a086367a1493HIydGZpZQJhxBWjflZBGmr89R44M")
-IMAGE_UPLOADER      = os.getenv("IMAGE_UPLOADER", "0x0")
+# Direct mode (only used when SEARCH_PROXY_URL is empty).  Do not ship default
+# keys in code; benchmark runs should normally use SEARCH_PROXY_URL.
+SERPER_API_KEY      = os.getenv("SERPER_API_KEY", "")
+JINA_API_KEY        = os.getenv("JINA_API_KEY", "")
 
 SERPER_SEARCH_URL   = "https://google.serper.dev/search"
 SERPER_LENS_URL     = "https://google.serper.dev/lens"
@@ -101,22 +116,68 @@ def _proxy_headers(json_body: bool = True) -> dict:
 # ---------------------------------------------------------------------------
 # Proxy-mode helpers
 # ---------------------------------------------------------------------------
-def _proxy_post(path: str, payload: dict, timeout: float = PROXY_HTTP_TIMEOUT) -> dict:
+def _proxy_post(path: str, payload: dict, timeout: float = PROXY_HTTP_TIMEOUT, retries: int | None = None) -> dict:
     url = f"{SEARCH_PROXY_URL}{path}"
-    resp = requests.post(
-        url,
-        json=payload,
-        headers=_proxy_headers(json_body=True),
-        timeout=timeout,
-        verify=SEARCH_PROXY_VERIFY_SSL,
-    )
-    resp.raise_for_status()
-    return resp.json()
+    last_exc: Exception | None = None
+    retry_count = PROXY_RETRIES if retries is None else retries
+    for attempt in range(max(1, retry_count + 1)):
+        try:
+            resp = requests.post(
+                url,
+                json=payload,
+                headers=_proxy_headers(json_body=True),
+                timeout=timeout,
+                verify=SEARCH_PROXY_VERIFY_SSL,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as exc:
+            last_exc = exc
+            if attempt >= retry_count:
+                break
+            time.sleep(max(0.0, PROXY_RETRY_BACKOFF) * (attempt + 1))
+    raise last_exc or RuntimeError(f"search proxy request failed: {url}")
 
 
 def _proxy_search(path: str, payload: dict) -> list[dict]:
     """POST /search/text or /search/image; normalize to the legacy result shape."""
-    data = _proxy_post(path, payload)
+    try:
+        data = _proxy_post(path, payload)
+    except requests.RequestException as exc:
+        # Text benchmark latency is dominated by page fetch timeouts.  When a
+        # fetched search times out, try a no-fetch query once so the agent still
+        # receives snippets instead of losing the whole step.
+        if path == "/search/text" and payload.get("fetch"):
+            fallback_payload = dict(payload)
+            fallback_payload["fetch"] = False
+            fallback_payload["max_chars"] = 0
+            try:
+                data = _proxy_post(
+                    path,
+                    fallback_payload,
+                    timeout=min(PROXY_HTTP_TIMEOUT, PROXY_FAST_FALLBACK_TIMEOUT),
+                    retries=0,
+                )
+            except requests.RequestException as fallback_exc:
+                logger.warning("search-proxy %s no-fetch fallback failed: %s", path, fallback_exc)
+                return [
+                    {
+                        "rank": 1,
+                        "title": "",
+                        "url": "",
+                        "snippet": f"[proxy-error] {type(exc).__name__}: {exc}",
+                    }
+                ]
+        else:
+            logger.warning("search-proxy %s request failed: %s", path, exc)
+            return [
+                {
+                    "rank": 1,
+                    "title": "",
+                    "url": "",
+                    "snippet": f"[proxy-error] {type(exc).__name__}: {exc}",
+                }
+            ]
     if not data.get("ok", False):
         # Surface the proxy-side error as a single empty result so the LLM
         # can see what went wrong without us raising.
@@ -136,34 +197,6 @@ def _proxy_search(path: str, payload: dict) -> list[dict]:
             entry["content"] = hit["content"]
         out.append(entry)
     return out
-
-
-def _proxy_upload_image(path: Path) -> str:
-    """Stream a local image to the proxy's /upload_image and get a public URL."""
-    if not path.exists() or not path.is_file():
-        raise FileNotFoundError(path)
-    mime, _ = mimetypes.guess_type(str(path))
-    mime = mime or "application/octet-stream"
-
-    headers = _proxy_headers(json_body=False)
-
-    with open(path, "rb") as fh:
-        files = {"file": (path.name, fh, mime)}
-        resp = requests.post(
-            f"{SEARCH_PROXY_URL}/upload_image",
-            files=files,
-            headers=headers,
-            timeout=PROXY_HTTP_TIMEOUT,
-            verify=SEARCH_PROXY_VERIFY_SSL,
-        )
-    resp.raise_for_status()
-    data = resp.json()
-    if not data.get("ok", False):
-        raise RuntimeError(f"upload_image failed: {data.get('error')}")
-    url = data.get("url", "")
-    if not url:
-        raise RuntimeError(f"upload_image returned empty url: {data}")
-    return url
 
 
 # ---------------------------------------------------------------------------
@@ -207,52 +240,24 @@ def _jina_fetch(url: str, max_chars: int) -> str:
         return f"[jina-error] {type(exc).__name__}: {exc}"
 
 
-def _direct_upload_local_image(path: Path) -> str:
-    if IMAGE_UPLOADER != "0x0":
-        raise RuntimeError(
-            f"Unsupported IMAGE_UPLOADER={IMAGE_UPLOADER!r}. "
-            "Either set IMAGE_UPLOADER=0x0, host the image yourself "
-            "and pass an http(s) URL, or run via SEARCH_PROXY_URL."
+def _require_image_url(image_url: str) -> str:
+    """Validate that ``image_url`` is a public http(s) URL.
+
+    Local file paths are no longer accepted: uploading user images to a
+    third-party host on the fly is unsafe and has been removed. Callers
+    must supply an online URL that points to the same image they want
+    reverse-searched.
+    """
+    if not image_url or not str(image_url).strip():
+        raise ValueError("search_image requires a non-empty image URL.")
+    s = str(image_url).strip()
+    if not (s.startswith("http://") or s.startswith("https://")):
+        raise ValueError(
+            f"search_image: {s!r} is not an http(s) URL. "
+            "Local image upload has been disabled for safety — please pass "
+            "a publicly reachable URL pointing to the image."
         )
-    if not path.exists():
-        raise FileNotFoundError(path)
-    mime, _ = mimetypes.guess_type(str(path))
-    mime = mime or "application/octet-stream"
-    with open(path, "rb") as fh:
-        files = {"file": (path.name, fh, mime)}
-        headers = {"User-Agent": "kimi-agent-harness/1.0"}
-        resp = requests.post(
-            "https://0x0.st", files=files, headers=headers, timeout=DEFAULT_TIMEOUT,
-        )
-    resp.raise_for_status()
-    url = resp.text.strip()
-    if not url.startswith("http"):
-        raise RuntimeError(f"Unexpected 0x0.st response: {url!r}")
-    logger.info("Uploaded %s -> %s", path, url)
-    return url
-
-
-def _resolve_image_to_url_direct(image: str) -> str:
-    if image.startswith("http://") or image.startswith("https://"):
-        return image
-    p = Path(image).expanduser()
-    if p.exists() and p.is_file():
-        return _direct_upload_local_image(p)
-    raise ValueError(
-        f"search_image: {image!r} is neither an http(s) URL nor an existing local file."
-    )
-
-
-def _resolve_image_to_url_proxy(image: str) -> str:
-    if image.startswith("http://") or image.startswith("https://"):
-        # Already public — proxy can feed it straight to /search/image.
-        return image
-    p = Path(image).expanduser()
-    if p.exists() and p.is_file():
-        return _proxy_upload_image(p)
-    raise ValueError(
-        f"search_image: {image!r} is neither an http(s) URL nor an existing local file."
-    )
+    return s
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +276,7 @@ def search_text(
     if not query or not query.strip():
         return []
     top_k = max(1, min(int(top_k), 10))
+
     if _proxy_enabled():
         logger.info("search_text(proxy) q=%r top_k=%d fetch=%s",
                     query, top_k, fetch)
@@ -307,23 +313,19 @@ def search_text(
 
 
 def search_image(
-    image: str,
-    top_k: int = 1,
+    image_url: str,
+    top_k: int = 3,
     fetch: bool = True,
     max_chars: int = 500,
 ) -> list[dict]:
     """Reverse image search via Google Lens (Serper /lens).
 
-    ``image`` may be an http(s) URL or a local file path. In proxy mode
-    local files are streamed to the proxy's ``/upload_image`` endpoint;
-    in direct mode they are pushed to a public host (default 0x0.st).
+    ``image`` may be an http(s) URL or a local file path.
     """
-    if not image or not image.strip():
-        raise ValueError("search_image requires a non-empty `image` argument.")
+    image_url = _require_image_url(image_url)
     top_k = max(1, min(int(top_k), 10))
 
     if _proxy_enabled():
-        image_url = _resolve_image_to_url_proxy(image.strip())
         logger.info("search_image(proxy) image_url=%s top_k=%d fetch=%s",
                     image_url, top_k, fetch)
         return _proxy_search(
@@ -337,7 +339,6 @@ def search_image(
         )
 
     # Direct mode
-    image_url = _resolve_image_to_url_direct(image.strip())
     logger.info("search_image(direct) image_url=%s top_k=%d fetch=%s",
                 image_url, top_k, fetch)
     payload = {"url": image_url}
@@ -375,7 +376,7 @@ if __name__ == "__main__":
     p_text.add_argument("--no-fetch", action="store_true")
 
     p_img = sub.add_parser("image")
-    p_img.add_argument("image", help="URL or local path")
+    p_img.add_argument("image_url", help="URL or local path")
     p_img.add_argument("--top-k", type=int, default=3)
     p_img.add_argument("--no-fetch", action="store_true")
 
@@ -386,6 +387,6 @@ if __name__ == "__main__":
     if args.cmd == "text":
         out = search_text(args.query, top_k=args.top_k, fetch=not args.no_fetch)
     else:
-        out = search_image(args.image, top_k=args.top_k, fetch=not args.no_fetch)
+        out = search_image(args.image_url, top_k=args.top_k, fetch=not args.no_fetch)
 
-    print(json.dumps(out, ensure_ascii=False, indent=2)[:5000])
+    print(json.dumps(out, ensure_ascii=False, indent=2)[:2000])

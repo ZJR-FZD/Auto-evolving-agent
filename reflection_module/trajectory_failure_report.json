@@ -1,0 +1,108 @@
+{
+  "trajectory_dir": "trajectories_baseline_2wiki_full",
+  "num_tasks": 100,
+  "num_failed_like": 93,
+  "failure_type_counts": {
+    "malformed_tool_call": 140,
+    "empty_assistant": 33,
+    "max_steps": 28,
+    "tool_error": 3
+  },
+  "avg_steps": 4.6,
+  "avg_tool_calls": 2.85,
+  "top_repeated_queries": [],
+  "samples": {
+    "malformed_tool_call": [
+      {
+        "task_id": "0c93a286088d11ebbd70ac1f6bf848b6",
+        "failure_type": "malformed_tool_call",
+        "step_id": 2,
+        "evidence": "The first film \"Rose O' The River\" is directed by Robert Thornby.\nThe second film \"The Assault Of The Present On The Rest Of Time\" is directed by Alexander Kluge.\n\nNow I need to find the birth years of Robert Thornby and Alexander Kluge to compare who was born later.\n\n<tool_call>\n<function=search_text>\n<parameter=fetch>\nFalse\n</parameter>\n<parameter=query>\nRobert Thornby director birth year\n</parameter>\n<parameter=top_k>\n1\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=search_text>\n",
+        "suggested_reflection": "将 reasoning 中的伪工具调用改为 OpenAI function-calling 格式。"
+      },
+      {
+        "task_id": "0c93a286088d11ebbd70ac1f6bf848b6",
+        "failure_type": "malformed_tool_call",
+        "step_id": 3,
+        "evidence": "<tool_call>\n<function=search_text>\n<parameter=fetch>\nTrue\n</parameter>\n<parameter=query>\nRobert Thornby director birth date\n</parameter>\n<parameter=top_k>\n2\n</parameter>\n</function>\n</tool_call>\n<tool_call>\n<function=search_text>\n<parameter=fetch>\nTrue\n</parameter>\n<parameter=query>\nAlexander Kluge director birth date\n</parameter>\n<parameter=top_k>\n2\n</parameter>\n</function>\n</tool_call>",
+        "suggested_reflection": "将 reasoning 中的伪工具调用改为 OpenAI function-calling 格式。"
+      },
+      {
+        "task_id": "0d0f4fcb084d11ebbd56ac1f6bf848b6",
+        "failure_type": "malformed_tool_call",
+        "step_id": 2,
+        "evidence": "The search results show:\n- Devil's Partner: 1960 (IMDb) / 1961 (Wikipedia mentions St. Louis premiere in 1961)\n- Plaguers: 2008\n\nSo Devil's Partner (1960/1961) came out earlier than Plaguers (2008).\n\nThe answer is Devil's Partner.\n\nWait, let me double-check the Devil's Partner release date from the content. The first result says it's from 1960 on IMDb. The Wikipedia mentions 1961 for St. Louis. Let me get more detail to be sure.\n\nActually, looking at the snippets:\n- Devil's Partner: 1960 on IMDb",
+        "suggested_reflection": "将 reasoning 中的伪工具调用改为 OpenAI function-calling 格式。"
+      }
+    ],
+    "empty_assistant": [
+      {
+        "task_id": "0c93a286088d11ebbd70ac1f6bf848b6",
+        "failure_type": "empty_assistant",
+        "step_id": 5,
+        "evidence": "assistant has no content and no tool_calls",
+        "suggested_reflection": "要求下一步必须二选一：真实工具调用或最终答案，避免空转。"
+      },
+      {
+        "task_id": "174a146809a411ebbdb0ac1f6bf848b6",
+        "failure_type": "empty_assistant",
+        "step_id": 2,
+        "evidence": "assistant has no content and no tool_calls",
+        "suggested_reflection": "要求下一步必须二选一：真实工具调用或最终答案，避免空转。"
+      },
+      {
+        "task_id": "29c7fb2408fb11ebbdacac1f6bf848b6",
+        "failure_type": "empty_assistant",
+        "step_id": 2,
+        "evidence": "assistant has no content and no tool_calls",
+        "suggested_reflection": "要求下一步必须二选一：真实工具调用或最终答案，避免空转。"
+      }
+    ],
+    "max_steps": [
+      {
+        "task_id": "0fe8976c0bde11eba7f7acde48001122",
+        "failure_type": "max_steps",
+        "step_id": 6,
+        "evidence": "last step=6, no final assistant text",
+        "suggested_reflection": "压缩当前证据，限制下一轮搜索深度，证据足够时立即回答。"
+      },
+      {
+        "task_id": "2ca6a4ee0bdd11eba7f7acde48001122",
+        "failure_type": "max_steps",
+        "step_id": 6,
+        "evidence": "last step=6, no final assistant text",
+        "suggested_reflection": "压缩当前证据，限制下一轮搜索深度，证据足够时立即回答。"
+      },
+      {
+        "task_id": "30dc7514089711ebbd76ac1f6bf848b6",
+        "failure_type": "max_steps",
+        "step_id": 6,
+        "evidence": "last step=6, no final assistant text",
+        "suggested_reflection": "压缩当前证据，限制下一轮搜索深度，证据足够时立即回答。"
+      }
+    ],
+    "tool_error": [
+      {
+        "task_id": "7661712e0bdb11eba7f7acde48001122",
+        "failure_type": "tool_error",
+        "step_id": 1,
+        "evidence": "[ERROR] Tool 'search_text' raised: TypeError: search_text() got an unexpected keyword argument 'fetch_content'",
+        "suggested_reflection": "解析工具错误，改写参数或换用更稳的工具，避免原样重试。"
+      },
+      {
+        "task_id": "8d3f6e620bdd11eba7f7acde48001122",
+        "failure_type": "tool_error",
+        "step_id": 5,
+        "evidence": "[ERROR] Tool 'browser_navigate' raised: TypeError: browser_navigate() got an unexpected keyword argument 'max_chars'",
+        "suggested_reflection": "解析工具错误，改写参数或换用更稳的工具，避免原样重试。"
+      },
+      {
+        "task_id": "c603908c08dd11ebbd9eac1f6bf848b6",
+        "failure_type": "tool_error",
+        "step_id": 4,
+        "evidence": "[ERROR] Tool 'browser_navigate' raised: TypeError: browser_navigate() got an unexpected keyword argument 'max_chars'",
+        "suggested_reflection": "解析工具错误，改写参数或换用更稳的工具，避免原样重试。"
+      }
+    ]
+  }
+}

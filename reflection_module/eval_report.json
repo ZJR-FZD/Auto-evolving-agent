@@ -1,0 +1,99 @@
+{
+  "total": 5,
+  "passed": 5,
+  "pass_rate": 1.0,
+  "memory_path": "reflection_module/tmp_eval_memory.jsonl",
+  "memory_items": 5,
+  "retrieval_non_empty": true,
+  "smoke_tests": [
+    {
+      "name": "memory_dedup",
+      "ok": true,
+      "detail": {
+        "memory_items": 1
+      }
+    },
+    {
+      "name": "old_memory_schema_compatible",
+      "ok": true,
+      "detail": {
+        "hits": 1
+      }
+    },
+    {
+      "name": "analyze_trajectories_tmp",
+      "ok": true,
+      "detail": {
+        "malformed_tool_call": 1,
+        "unknown_tool": 1
+      }
+    },
+    {
+      "name": "compare_missing_reflection_friendly",
+      "ok": true,
+      "detail": {
+        "ok": false,
+        "error": "one or more result files are missing",
+        "missing": {
+          "reflection": "/tmp/tmpg7uaohd4/missing_reflection.jsonl"
+        },
+        "how_to_run": "Run the corresponding reflection evaluation first, then rerun compare_runs.py. For critic mode use run_reflection_2wiki_qwen3_30b_a3b.py or run_reflection_simplevqa_qwen3_30b_a3b.py."
+      }
+    },
+    {
+      "name": "critic_validator_rejects_answer",
+      "ok": true,
+      "detail": {}
+    },
+    {
+      "name": "no_api_key_rule_fallback",
+      "ok": true,
+      "detail": {
+        "critic_model": "rule_fallback"
+      }
+    }
+  ],
+  "smoke_passed": true,
+  "cases": [
+    {
+      "case": "textual_tool_call",
+      "expected": "malformed_tool_call",
+      "detected": true,
+      "actual": "malformed_tool_call",
+      "ok": true,
+      "feedback": "[Reflection]\n触发原因：assistant_empty_with_textual_tool_call\n失败类型：malformed_tool_call\n根因定位：模型把工具调用写进 reasoning 文本，但没有产生可执行的 OpenAI tool_calls，主循环无法调度工具。\n修正策略：下一步必须重新发起规范 function call；不要用 XML 或自然语言伪造工具调用。\n当前下一步：请把刚才计划中的查询改为一次或多次真实工具调用，或在已有证据足够时直接给出最终答案。\n反思模式：rule_fallback\n请先按上述修正策略调整计划，再继续执行；不要简单重复刚才失败的动作。"
+    },
+    {
+      "case": "empty_assistant",
+      "expected": "no_action",
+      "detected": true,
+      "actual": "no_action",
+      "ok": true,
+      "feedback": "[Reflection]\n触发原因：assistant_empty_response\n失败类型：no_action\n根因定位：模型既没有回答，也没有发起工具调用，导致一步预算被空转消耗。\n修正策略：要求模型在下一步二选一：调用一个具体工具，或基于已有证据输出最终答案。\n当前下一步：请立刻选择一个可执行动作：调用工具获取缺失证据，或给出最终答案。\n反思模式：rule_fallback\n请先按上述修正策略调整计划，再继续执行；不要简单重复刚才失败的动作。"
+    },
+    {
+      "case": "tool_timeout",
+      "expected": "tool_timeout",
+      "detected": true,
+      "actual": "tool_timeout",
+      "ok": true,
+      "feedback": "[Reflection]\n触发原因：tool_failure\n失败类型：tool_timeout\n根因定位：browser_get_text 调用超时或连接失败，重复同一参数大概率继续失败。\n修正策略：降低抓取量或换用搜索摘要/浏览器工具；必要时改写查询并减少 top_k、max_chars。\n当前下一步：请用更短查询或更小 fetch 参数重试一次；若仍失败，换用另一个工具。\n反思模式：rule_fallback\n请先按上述修正策略调整计划，再继续执行；不要简单重复刚才失败的动作。"
+    },
+    {
+      "case": "tool_error",
+      "expected": "tool_error",
+      "detected": true,
+      "actual": "tool_error",
+      "ok": true,
+      "feedback": "[Reflection]\n触发原因：tool_failure\n失败类型：tool_error\n根因定位：google_search 返回错误信号：[ERROR] Unknown tool: google_search\n修正策略：先解析错误含义，再选择缩小参数、改写查询或更换工具。\n当前下一步：请根据错误信息修改下一步动作，并说明改变了哪个参数或工具。\n反思模式：rule_fallback\n请先按上述修正策略调整计划，再继续执行；不要简单重复刚才失败的动作。"
+    },
+    {
+      "case": "max_steps",
+      "expected": "budget_exhausted",
+      "detected": true,
+      "actual": "budget_exhausted",
+      "ok": true,
+      "feedback": "[Reflection]\n触发原因：max_steps_reached\n失败类型：budget_exhausted\n根因定位：任务在步数预算内没有收敛，常见原因是查询链过长、工具调用未执行或迟迟未形成最终答案。\n修正策略：后续相似任务应优先并行查询关键实体，拿到足够证据后立即回答，避免继续扩展无关搜索。\n当前下一步：在相似任务中限制每个子问题一次查询，证据足够后立即输出简短答案。\n反思模式：rule_fallback\n请先按上述修正策略调整计划，再继续执行；不要简单重复刚才失败的动作。"
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "generated": [
+    "submit_smoke/2wiki_baseline_raw_results.jsonl",
+    "submit_smoke/2wiki_baseline_final_results.jsonl",
+    "submit_smoke/2wiki_baseline_trajectories.jsonl"
+  ],
+  "copied": [],
+  "missing": [
+    "results/group_7.csv",
+    "results/group_7.json",
+    "results/group_7.zip",
+    "results/group_7_raw_results.jsonl",
+    "results/group_7_final_results.jsonl",
+    "trajectories/benchmark",
+    "results/simpleqa_results.jsonl",
+    "trajectories/simpleqa",
+    "results/reflection_2wiki_full.jsonl",
+    "trajectories_reflection_2wiki_full"
+  ],
+  "format": {
+    "submit_smoke/2wiki_baseline_raw_results.jsonl": {
+      "exists": true,
+      "lines": 100,
+      "errors": []
+    },
+    "submit_smoke/2wiki_baseline_final_results.jsonl": {
+      "exists": true,
+      "lines": 100,
+      "errors": []
+    }
+  },
+  "trajectory_format_errors": {}
+}

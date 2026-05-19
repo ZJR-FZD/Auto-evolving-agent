@@ -33,6 +33,9 @@ class Trajectory:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         self.path = output_path / f"{task_id}.jsonl"
+        # Truncate existing file to avoid stale data from previous runs
+        if self.path.exists():
+            self.path.unlink()
 
     # ------------------------------------------------------------------
     # Write

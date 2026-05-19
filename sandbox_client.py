@@ -26,11 +26,18 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+def _clean_base_url(value: str) -> str:
+    """Normalize copied service URLs; pasted shell values sometimes contain wraps."""
+    return "".join(str(value or "").split()).rstrip("/")
+
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 # NOTE: same env var name as before so existing deployments keep working.
-SANDBOX_BASE_URL = os.getenv("SANDBOX_BASE_URL", "https://nat2-notebook-inspire.sii.edu.cn/ws-7c23bd1d-9bae-4238-803a-737a35480e18/project-39fbffc7-dcca-4fb4-b43a-2f69f72f7e52/user-37373cef-1fa2-4dbb-ab3e-5c803eb41384/vscode/3c98f013-c5a7-4656-b5d9-37c8b26493ad/8c9601c0-e5ca-4c32-8e55-4aac78cc4e09/proxy/8080/")
+# Do not hard-code notebook/tunnel URLs here; every session has a different
+# proxy path and public commits should not leak private workspace URLs.
+SANDBOX_BASE_URL = _clean_base_url(os.getenv("SANDBOX_BASE_URL", ""))
 SANDBOX_API_TOKEN = os.getenv("SANDBOX_API_TOKEN", "") or os.getenv(
     "BROWSER_API_TOKEN", ""
 )

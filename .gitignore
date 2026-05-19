@@ -2,8 +2,12 @@ __pycache__/
 *.pyc
 .env
 *.log
+*.zip
 *.jsonl
 results/
+results*/
+trajectories*/
+Auto-evolving-agent/
 outputs/
 checkpoints/
 *.pt

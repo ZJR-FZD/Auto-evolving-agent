@@ -1,0 +1,102 @@
+| index | memory_gate_v3_answer | no30b_rule_only_answer | no30b_memory_reuse_blocked_answer |
+|---:|---|---|---|
+| 0 | 1,000,000 shares | Insufficient evidence | 10,000,000 shares |
+| 1 | a specific organ donation story | Unknown - search proxy degraded, cannot verify specific case details | Ryan Hines |
+| 2 | Elon Musk | Jack Ma | 马克·扎克伯格（Mark Zuckerberg） |
+| 3 | June 15, 2015 | Insufficient evidence | June 15, 2015 |
+| 4 | Archaeological Services | Archaeological Services International | Archaeology South East |
+| 5 | Kim Yoo-jung (金裕贞) | 李佳琦 | 李佳琦 |
+| 6 | </tool_call> | Los Picapiedra | Los Picapiedra |
+| 7 | Love Aptually | The Daily | The Dating App Podcast |
+| 8 | Bugs Bunny | 巴特·辛普森 (Bart Simpson) | Shaggy Rogers (Scooby-Doo) |
+| 9 | Yvonne | Samantha | Samantha |
+| 10 | Carlos Reichenbach | Francisco Lombardi | </tool_call> |
+| 11 | The Secret Garden | The Picture of Dorian Gray | The Secret Garden |
+| 12 | Anatoly Yakovenko | Sebastien Bichon | Hayden Adams |
+| 13 | Henri Vidal | Philippe Noiret | Jean-Paul Belmondo |
+| 14 | 林书豪 | Yao Ming | Jeremy Lin |
+| 15 | identity evolved through several iterations | Insufficient evidence | 梅西（Lionel Messi） |
+| 16 | The Women of the West: A Social History | The Fourteen | The Fourteen |
+| 17 | The Little Mermaid | Spider-Man: Into the Spider-Verse | Insufficient evidence |
+| 18 | Warner Bros. Television | Studio Dragon | Studio Dragon |
+| 19 | Atlético Tocantins | FC Porto | Port Adelaide |
+| 20 | Elizabeth | Richard | John |
+| 21 | Jackie Stewart | Didier Pironi | Giuseppe Farina |
+| 22 | George Steinbrenner | George Steinbrenner | Jon Jones |
+| 23 | Andris Amoliņš | Vaclav Smil | James A. Rogers |
+| 24 | John Wain | John W. Campbell | John Wain |
+| 25 | Coprinus comatus | Camellia sinensis（茶） | Camellia sinensis（茶树） |
+| 26 | The Elephant in the Room: How Elephants Use Sound to Communicate | Evolutionary Ecology of Behavior | </tool_call> |
+| 27 | Mob Psycho 100 | 进击的巨人 (Attack on Titan / Shingeki no Kyojin) | 进击的巨人（Attack on Titan） |
+| 28 | Brothers | 贫民窟的百万富翁 (Slumdog Millionaire) | 贫民窟的百万富翁 (Slumdog Millionaire, 2008) |
+| 29 | Unknown | John Carew | Paul Scholes |
+| 30 | blue | blue | blue |
+| 31 | Mackenzie Lofland | Unknown - 搜索工具连续超时失败，无法获取足够信息确定该演员及其姐姐的名字 | Tilda Chalamet |
+| 32 | The Cars | The Cars | The Bee Gees |
+| 33 | John R. Pierce | John R. Pierce | Insufficient evidence |
+| 34 | 李敏镐（Lee Min-ho） | 金秀贤（Kim Soo-hyun） | 李敏镐（Lee Min-ho） |
+| 35 | Amphimallon solstitiale | </tool_call> | </tool_call> |
+| 36 | Evergrande (original name: 恒大集团 / Evergrande Group) | 阿里巴巴 (Alibaba) | 360 公司（原名为 3721 公司） |
+| 37 | 姚明 | 易建联 (Yi Jianlian) | 易建联（Yi Jianlian） |
+| 38 | David O'Reilly | David Sarro | Markus |
+| 39 | 叶诗文 | Kyle Chalmers | Kyle Chalmers |
+| 40 | 《The Disappearance of the Other》(《他者的消失》) by the author | 《北京法源寺》 | 考虑露西·伊利格瑞？法国作家， |
+| 41 | The Short Film | 乡村教师 | 乡村教师 |
+| 42 | Arsenal has won the most FA Cup titles up to 2023 with 14 wins | >Arsenal (most wins: 14 titles in FA Cup up to 2023) | 亚军；曼联 |
+| 43 | The Great Ace Attorney: Adventures | 尼尔：机械纪元 (NieR: Automata) | 刺客信条2（Assassin's Creed II） |
+| 44 | 2018 League of Legends World Championship Finals (IG vs FNC) | 2018 League of Legends World Championship Finals | 2018年英雄联盟全球总决赛（S8）决赛，IG vs FNC，第三局比赛 |
+| 45 | Jennifer Lawrence | Scarlett Johansson | Scarlett Johansson |
+| 46 | Charlotte Tilbury | Francis Ford Coppola | Charlotte Tilbury |
+| 47 | The Black Mages | The Black Dahlia Murder | The Ghost Inside |
+| 48 | Charlotte Clark | Marjorie Jones | Bob Clampett |
+| 49 | BoJack Horseman | The Door | Bob's Burgers |
+| 50 | ECCV 2024 于 2024 年 5 月 29 日至 31 日举行 | Insufficient evidence | The 18th European Conference on Computer Vision (ECCV) 2024 runs from May 1 to May 4, 2024 |
+| 51 | Tamirat Tola（埃塞俄比亚） | Gelete Burka（埃塞俄比亚选手） | Kebede Tola（埃塞俄比亚） |
+| 52 | LeBron James | LeBron James | LeBron James |
+| 53 | Grok-2 和 Grok-2 mini 模型 | Grok 2 | Grok-2 和 Grok-2 mini 模型 |
+| 54 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 55 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 56 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 57 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 58 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 59 | 7% | Insufficient evidence | Insufficient evidence |
+| 60 | Insufficient evidence | Insufficient evidence | Dioptra |
+| 61 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 62 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 63 | more | Insufficient evidence | Insufficient evidence |
+| 64 | 该图旨在演示论文方法中通过图像扩散生成 3D 物体的能力，特别是展示生成的 3D 物体（椅子）及其多视角/反射表示，验证方法能够生成具有正确几何结构和视角一致性的 3D 物体 | 从 2D 图像生成 3D 物体的能力（从模糊的 2D 输入生成清晰的 3D 椅子） | Insufficient evidence |
+| 65 | 相机位姿 (camera poses) 和 3D 场景点 (3D scene points) | 相机位姿（camera poses）和 3D 点位置（3D point positions） | Insufficient evidence |
+| 66 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 67 | Insufficient evidence | SAM | SAM |
+| 68 | Insufficient evidence | Non neural approach | Non neural approach |
+| 69 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 70 | Bells（铃钱） | bells（铃钱） | Bell（贝尔） |
+| 71 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 72 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 73 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 74 | Insufficient evidence | Insufficient evidence | 无法获取数据，需要网络搜索验证 |
+| 75 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 76 | Insufficient evidence | 2024年6月27日 | Insufficient evidence |
+| 77 | Insufficient evidence | 2024 年 5 月 13 日/14 日 | Insufficient evidence |
+| 78 | Insufficient evidence | EDG（Edward Gaming） | Insufficient evidence |
+| 79 | Azir | Insufficient evidence | Insufficient evidence |
+| 80 | 因此，VG 在 2024 年 MSI 的总胜率为 0（未参赛） | Insufficient evidence | 50% |
+| 81 | 浏览器扩展程序（Chrome Extensions）或网站内置的打赏功能（通过 JavaScript 实现） | PayPal Button | Chrome Payments API |
+| 82 | DJI Ronin 稳定器（DJI Ronim gimbal） | Insufficient evidence | Insufficient evidence |
+| 83 | 2024 年 7 月 17 日 | Insufficient evidence | 2024 年 7 月 17 日 |
+| 84 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 85 | YouTube Main, 10.4% | The Gauge | The Gauge |
+| 86 | CrowdStrike | CrowdStrike | CrowdStrike |
+| 87 | Galaxy Z Flip6 | Insufficient evidence | Galaxy S24 Ultra |
+| 88 | 2024 年 2 月 15 日 | Apple Vision Pro 在中国已经发售，起售价 RMB 29,999 | Apple Vision Pro 已于 2024 年 6 月 28 日在中国大陆正式发售 |
+| 89 | Qwen（通义千问） | Qwen（通义千问） | 通义千问（Qwen） |
+| 90 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 91 | support | Insufficient evidence | oppose |
+| 92 | 吴泳铭（Eddie Wu） | Insufficient evidence | Insufficient evidence |
+| 93 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 94 | Insufficient evidence | Insufficient evidence | no |
+| 95 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 96 | Insufficient evidence | Insufficient evidence | Insufficient evidence |
+| 97 | Insufficient evidence | Insufficient evidence | yes |
+| 98 | Spain or England (the final was between Spain and England, with Spain winning 2-1) | England | England |
+| 99 | 9 | 10 | 33 |
