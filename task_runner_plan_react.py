@@ -306,12 +306,21 @@ def _collect_domains_from_results(results: list[dict]) -> set[str]:
 
 
 def _extract_candidates(results: list[dict]) -> list[str]:
-    """Extract rough person/entity candidates from snippets and titles."""
+    """Extract rough person/entity/title candidates from snippets and titles."""
     candidates = []
     seen = set()
     name_pat = re.compile(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b")
+    quoted_pat = re.compile(r'"([^"]{4,80})"')
+    split_pat = re.compile(r"\s[-|:]\s")
+    stop_phrases = {
+        "american institute of architects", "aia henry adams medal",
+        "wikipedia", "read timeout", "search results", "social history",
+    }
     for item in results:
-        blob = " ".join([str(item.get("title", "")), str(item.get("snippet", ""))])
+        title = str(item.get("title", ""))
+        snippet = str(item.get("snippet", ""))
+        blob = f"{title} {snippet}"
+        # 1) Proper names (person-like entities)
         for m in name_pat.finditer(blob):
             cand = m.group(1).strip()
             if len(cand) < 4:
@@ -321,6 +330,24 @@ def _extract_candidates(results: list[dict]) -> list[str]:
             if cand not in seen:
                 seen.add(cand)
                 candidates.append(cand)
+        # 2) Quoted phrases (often titles/books/works)
+        for m in quoted_pat.finditer(blob):
+            cand = re.sub(r"\s+", " ", m.group(1)).strip(" .,:;!?")
+            low = cand.lower()
+            if len(cand.split()) < 2:
+                continue
+            if any(p in low for p in stop_phrases):
+                continue
+            if cand and cand not in seen:
+                seen.add(cand)
+                candidates.append(cand)
+        # 3) Leading title segment before separators (common page title form)
+        lead = split_pat.split(title)[0].strip()
+        lead_low = lead.lower()
+        if 2 <= len(lead.split()) <= 8 and not any(p in lead_low for p in stop_phrases):
+            if lead and lead not in seen:
+                seen.add(lead)
+                candidates.append(lead)
     return candidates
 
 
@@ -617,14 +644,17 @@ def should_block_duplicate_query(current_kw: set, recent_kw: list[set]) -> bool:
     """
     Block only near-identical retries that add almost no new information.
     """
-    if not current_kw or not recent_kw:
+    if not current_kw or len(recent_kw) < 2:
         return False
-    last_window = recent_kw[-5:]
+    # Be conservative: only block when repeated near-duplicates appear.
+    last_window = recent_kw[-4:]
+    near_dup_hits = 0
     for prev in last_window:
         overlap = jaccard_similarity(current_kw, prev)
-        if overlap >= QUERY_SIMILARITY_THRESHOLD:
-            return True
-    return False
+        new_terms = len(current_kw - prev)
+        if overlap >= QUERY_SIMILARITY_THRESHOLD and new_terms <= 1:
+            near_dup_hits += 1
+    return near_dup_hits >= 2
 
 
 REFLECTION_PROMPT = (
