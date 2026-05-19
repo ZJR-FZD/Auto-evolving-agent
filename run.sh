@@ -5,7 +5,7 @@
 #
 # Arguments:
 #   dataset:  benchmark | simpleqa | 2wiki | all  (default: benchmark)
-#   mode:     basic | plan_react                   (default: basic)
+#   mode:     basic | plan_react | plan_react_negcrit  (default: basic)
 #   start:    start index (optional)
 #   end:      end index (optional)
 #
@@ -13,6 +13,7 @@
 #   ./run.sh benchmark plan_react          # 打榜全量, plan_react 范式
 #   ./run.sh simpleqa basic 0 5            # SimpleVQA 前5题, 基础范式
 #   ./run.sh all plan_react                # 全部数据集, plan_react 范式
+#   ./run.sh benchmark plan_react_negcrit  # benchmark 走在线否定评估范式
 #   ./run.sh benchmark basic 0 3           # benchmark 前3题测试
 
 set -e
@@ -43,7 +44,11 @@ echo "=========================================="
 
 run_benchmark() {
     echo "[*] Running benchmark (打榜数据集)..."
-    python run_benchmark.py --group "$GROUP" --mode "$MODE" $RANGE_ARGS
+    if [ "$MODE" = "plan_react_negcrit" ]; then
+        python run_benchmark_parallel_negcrit.py --group "$GROUP" $RANGE_ARGS
+    else
+        python run_benchmark.py --group "$GROUP" --mode "$MODE" $RANGE_ARGS
+    fi
 }
 
 run_simpleqa() {
@@ -73,7 +78,7 @@ case "$DATASET" in
         ;;
     *)
         echo "Unknown dataset: $DATASET"
-        echo "Usage: ./run.sh [benchmark|simpleqa|2wiki|all] [basic|plan_react] [start] [end]"
+        echo "Usage: ./run.sh [benchmark|simpleqa|2wiki|all] [basic|plan_react|plan_react_negcrit] [start] [end]"
         exit 1
         ;;
 esac

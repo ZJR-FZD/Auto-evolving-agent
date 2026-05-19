@@ -27,6 +27,8 @@ csv.field_size_limit(sys.maxsize)
 def _import_runner(mode: str):
     if mode == "plan_react":
         from task_runner_plan_react import run_task
+    elif mode == "plan_react_negcrit":
+        from task_runner_plan_react_negcrit import run_task
     else:
         from task_runner import run_task
     return run_task
@@ -186,8 +188,8 @@ def main():
     p.add_argument("--dataset", default=DATASET_PATH)
     p.add_argument("--output-dir", "-o", default="results")
     p.add_argument("--traj-dir", default="trajectories/benchmark")
-    p.add_argument("--mode", "-m", choices=["basic", "plan_react"], default="basic",
-                   help="Runner mode: basic (task_runner) or plan_react (task_runner_plan_react)")
+    p.add_argument("--mode", "-m", choices=["basic", "plan_react", "plan_react_negcrit"], default="basic",
+                   help="Runner mode: basic | plan_react | plan_react_negcrit")
     p.add_argument("--concurrency", "-c", type=int, default=2,
                    help="Number of questions to run concurrently (default: 2)")
     p.add_argument("--start", type=int, default=0)
