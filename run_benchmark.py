@@ -18,7 +18,9 @@ import os
 import sys
 import time
 import zipfile
+import threading
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 csv.field_size_limit(sys.maxsize)
 
@@ -56,6 +58,7 @@ def run_benchmark(
     start: int = 0,
     end: int | None = None,
     mode: str = "basic",
+    concurrency: int = 3,
 ):
     run_task = _import_runner(mode)
     end = end or len(dataset)
@@ -64,16 +67,12 @@ def run_benchmark(
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    output_dir = os.path.join(output_dir, mode)
+    output_dir = os.path.join(output_dir, "benchmark", mode, timestamp)
     traj_dir = os.path.join(traj_dir, mode, timestamp)
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(traj_dir, exist_ok=True)
 
-    progress_path = os.path.join(output_dir, f"group_{group_id}_benchmark_progress_{timestamp}.jsonl")
-
-    result_path = os.path.join(output_dir, f"group_{group_id}_benchmark_{timestamp}.jsonl")
-    traj_path = os.path.join(output_dir, f"group_{group_id}_benchmark_traj_{timestamp}.jsonl")
-    zip_path = os.path.join(output_dir, f"group_{group_id}_{timestamp}.zip")
+    progress_path = os.path.join(output_dir, f"group_{group_id}_progress.jsonl")
 
     # Load existing progress for resume
     done_indices = set()
@@ -85,12 +84,10 @@ def run_benchmark(
                     done_indices.add(rec["index"])
         logger.info("Resumed: %d items already done", len(done_indices))
 
-    for i, item in enumerate(subset):
-        idx = start + i
-        if idx in done_indices:
-            logger.info("[%d/%d] Already done, skipping", idx, end)
-            continue
+    # Lock for thread-safe progress file writing
+    progress_lock = threading.Lock()
 
+    def _run_one(idx, item):
         problem = item["problem"]
         image_b64 = item.get("image", "").strip() or None
 
@@ -112,12 +109,31 @@ def run_benchmark(
             answer = ""
         elapsed = time.time() - t0
 
-        # Save progress
-        progress_rec = {"index": idx, "answer": answer}
-        with open(progress_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(progress_rec, ensure_ascii=False) + "\n")
+        with progress_lock:
+            progress_rec = {"index": idx, "answer": answer}
+            with open(progress_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(progress_rec, ensure_ascii=False) + "\n")
 
-        logger.info("  => answer=%s  %.1fs", answer[:80], elapsed)
+        logger.info("  [%d] => answer=%s  %.1fs", idx, answer[:80], elapsed)
+        return idx, answer
+
+    # Build work items
+    work_items = []
+    for i, item in enumerate(subset):
+        idx = start + i
+        if idx in done_indices:
+            logger.info("[%d/%d] Already done, skipping", idx, end)
+            continue
+        work_items.append((idx, item))
+
+    # Execute concurrently
+    with ThreadPoolExecutor(max_workers=concurrency) as pool:
+        futures = [pool.submit(_run_one, idx, item) for idx, item in work_items]
+        for f in as_completed(futures):
+            try:
+                f.result()
+            except Exception as e:
+                logger.error("Unexpected error: %s", e)
 
     # --- Assemble final outputs ---
     # Reload all progress
@@ -129,21 +145,22 @@ def run_benchmark(
                     rec = json.loads(line)
                     all_answers[rec["index"]] = rec["answer"]
 
-    # 1. Result JSONL: {"index":, "instruction":, "image":, "answer":, "pred":}
-    with open(result_path, "w", encoding="utf-8") as f:
+    # 1. Answer CSV: same format as benchmark.csv (problem, image, answer)
+    csv_path = os.path.join(output_dir, f"group_{group_id}.csv")
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["problem", "image", "answer"])
+        writer.writeheader()
         for j in range(len(dataset)):
-            rec = {
-                "index": j,
-                "instruction": dataset[j]["problem"],
+            writer.writerow({
+                "problem": dataset[j]["problem"],
                 "image": dataset[j].get("image", "").strip() or "",
-                "answer": "",
-                "pred": all_answers.get(j, ""),
-            }
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    logger.info("Results saved to %s", result_path)
+                "answer": all_answers.get(j, ""),
+            })
+    logger.info("CSV saved to %s", csv_path)
 
-    # 2. Trajectory JSONL: concatenate all bench_XXX.jsonl
-    with open(traj_path, "w", encoding="utf-8") as out:
+    # 2. Trajectory JSON: concatenate all bench_XXX.jsonl (one entry per line)
+    json_path = os.path.join(output_dir, f"group_{group_id}.json")
+    with open(json_path, "w", encoding="utf-8") as out:
         for j in range(len(dataset)):
             tf = os.path.join(traj_dir, f"bench_{j:03d}.jsonl")
             if os.path.exists(tf):
@@ -151,12 +168,13 @@ def run_benchmark(
                     for line in inp:
                         if line.strip():
                             out.write(line)
-    logger.info("Trajectories saved to %s", traj_path)
+    logger.info("Trajectory JSON saved to %s", json_path)
 
-    # 3. Zip
+    # 3. Zip: group_{group_id}.zip containing both files
+    zip_path = os.path.join(output_dir, f"group_{group_id}.zip")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(result_path, f"group_{group_id}_benchmark.jsonl")
-        zf.write(traj_path, f"group_{group_id}_benchmark_traj.jsonl")
+        zf.write(csv_path, f"group_{group_id}.csv")
+        zf.write(json_path, f"group_{group_id}.json")
     logger.info("Zip saved to %s", zip_path)
 
     return zip_path
@@ -170,6 +188,8 @@ def main():
     p.add_argument("--traj-dir", default="trajectories/benchmark")
     p.add_argument("--mode", "-m", choices=["basic", "plan_react"], default="basic",
                    help="Runner mode: basic (task_runner) or plan_react (task_runner_plan_react)")
+    p.add_argument("--concurrency", "-c", type=int, default=2,
+                   help="Number of questions to run concurrently (default: 2)")
     p.add_argument("--start", type=int, default=0)
     p.add_argument("--end", type=int, default=None)
     args = p.parse_args()
@@ -185,6 +205,7 @@ def main():
         start=args.start,
         end=int(args.end) if args.end is not None else len(dataset),
         mode=args.mode,
+        concurrency=args.concurrency,
     )
     print(f"\nDone! Submission: {zip_path}")
 

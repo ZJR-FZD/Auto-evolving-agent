@@ -62,15 +62,15 @@ def run_eval(
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    output_dir = os.path.join(output_dir, mode)
+    output_dir = os.path.join(output_dir, "simpleqa", mode, timestamp)
     traj_dir = os.path.join(traj_dir, mode, timestamp)
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(traj_dir, exist_ok=True)
 
-    progress_path = os.path.join(output_dir, f"group_{group_id}_simpleqa_progress_{timestamp}.jsonl")
+    progress_path = os.path.join(output_dir, f"group_{group_id}_progress.jsonl")
 
-    result_path = os.path.join(output_dir, f"group_{group_id}_simpleqa_{timestamp}.jsonl")
-    traj_path = os.path.join(output_dir, f"group_{group_id}_simpleqa_traj_{timestamp}.jsonl")
+    result_path = os.path.join(output_dir, f"group_{group_id}_simpleqa.jsonl")
+    traj_path = os.path.join(output_dir, f"group_{group_id}_simpleqa_traj.jsonl")
 
     # Load existing progress for resume
     done_indices = set()

@@ -131,6 +131,9 @@ GROUP_ID=3 ./run.sh benchmark plan_react
 python run_benchmark.py --group 7 --mode plan_react --start 0 --end 5
 python run_simpleqa.py --group 7 --mode basic
 python run_2wiki.py --group 7 --mode plan_react --start 10 --end 20
+
+# 指定并发数（仅 benchmark 支持）
+python run_benchmark.py --group 7 --mode plan_react -c 3
 ```
 
 ### 断点续跑
@@ -167,14 +170,16 @@ trajectories/
 
 ### 结果文件格式
 
-每行一个 JSON：
+评测集（simpleqa/2wiki）每行一个 JSON：
 
 ```json
 {"index": 0, "instruction": "问题", "image": "", "answer": "ground truth", "pred": "模型预测"}
 ```
 
-- 评测集（simpleqa/2wiki）：`answer` = ground truth，`pred` = 模型预测
-- 打榜集（benchmark）：`answer` = 空，`pred` = 模型输出
+打榜集（benchmark）输出：
+- `group_7.csv`：和原始 benchmark.csv 格式一致（problem, image, answer）
+- `group_7.json`：所有题目轨迹逐行拼接（每行一个 JSON 对象）
+- `group_7.zip`：打包上述两个文件
 
 ### 轨迹文件格式
 
@@ -191,26 +196,57 @@ trajectories/
 }
 ```
 
-`trajectories/` 下是每题独立的轨迹文件，`results/` 下的 `*_traj_*.jsonl` 是所有题目轨迹的汇总拼接。
+### 目录结构
+
+所有输出按 `{base}/{dataset}/{mode}/{timestamp}/` 组织：
+
+```
+results/
+├── benchmark/plan_react/20260519_144501/
+│   ├── group_7.csv            ← 答案文件（提交用）
+│   ├── group_7.json           ← 轨迹文件（提交用）
+│   ├── group_7.zip            ← 打包提交
+│   └── group_7_progress.jsonl ← 断点续跑进度
+├── simpleqa/plan_react/20260519_150000/
+│   ├── group_7_simpleqa.jsonl
+│   ├── group_7_simpleqa_traj.jsonl
+│   └── group_7_progress.jsonl
+└── 2wiki/plan_react/20260519_160000/
+    ├── group_7_2wiki.jsonl
+    ├── group_7_2wiki_traj.jsonl
+    └── group_7_progress.jsonl
+
+trajectories/
+├── benchmark/plan_react/20260519_144501/
+│   ├── bench_000.jsonl
+│   ├── bench_001.jsonl
+│   └── ...
+├── simpleqa/plan_react/20260519_150000/
+│   ├── simpleqa_000.jsonl
+│   └── ...
+└── 2wiki/plan_react/20260519_160000/
+    ├── 2wiki_000.jsonl
+    └── ...
+```
 
 ### 提交文件
-
-#### 评测集（自测用）
-
-| 文件 | 说明 |
-|------|------|
-| `group_7_simpleqa_{ts}.jsonl` | 99 条，含 answer 和 pred |
-| `group_7_simpleqa_traj_{ts}.jsonl` | 轨迹汇总 |
-| `group_7_2wiki_{ts}.jsonl` | 100 条，含 answer 和 pred |
-| `group_7_2wiki_traj_{ts}.jsonl` | 轨迹汇总 |
 
 #### 打榜数据集（正式提交）
 
 | 文件 | 说明 |
 |------|------|
-| `group_7.json` | Agent 推理轨迹 |
-| `group_7.csv` | answer 列为模型输出 |
+| `group_7.json` | Agent 推理轨迹（所有题目逐行拼接） |
+| `group_7.csv` | 和 benchmark.csv 格式一致，answer 列为模型输出 |
 | `group_7.zip` | 包含上述两个文件 |
+
+#### 评测集（自测用）
+
+| 文件 | 说明 |
+|------|------|
+| `group_7_simpleqa.jsonl` | 99 条，含 answer 和 pred |
+| `group_7_simpleqa_traj.jsonl` | 轨迹汇总 |
+| `group_7_2wiki.jsonl` | 100 条，含 answer 和 pred |
+| `group_7_2wiki_traj.jsonl` | 轨迹汇总 |
 
 ## 架构图
 
@@ -238,3 +274,36 @@ trajectories/
 │       └── Jina Reader (网页正文抽取)                     │
 └─────────────────────────────────────────────────────────┘
 ```
+
+## 性能优化
+
+### 已实现的加速策略
+
+1. **题目级并发**（`run_benchmark.py`）
+   - 多题同时跑，sglang 支持 continuous batching，并发请求会被自动打包处理
+   - 默认并发数为 2，通过 `-c` 参数调整
+   - GPU 利用率更高，总完成时间约为 `总题数 / 并发数 × 单题耗时`
+
+   ```bash
+   python run_benchmark.py --group 7 --mode plan_react -c 2   # 2题并发（默认）
+   python run_benchmark.py --group 7 --mode plan_react -c 3   # 3题并发（更快但显存压力大）
+   python run_benchmark.py --group 7 --mode plan_react -c 1   # 串行（调试用）
+   ```
+
+2. **工具调用并发**（`task_runner_plan_react.py`）
+   - 同一步内模型输出多个 tool_calls 时，使用 ThreadPoolExecutor 并发执行
+   - 最多 4 个工具同时跑，搜索 API 支持同 key 并发
+
+### 性能瓶颈说明
+
+| 瓶颈 | 耗时 | 原因 |
+|------|------|------|
+| 搜索工具 | 30-50s/次 | search-proxy 网络延迟 + Jina 抓取正文 |
+| LLM 推理 | 1-5s/步 | 取决于上下文长度和并发数 |
+| 浏览器工具 | 5-30s/次 | Playwright 页面加载，Facebook 等站点易超时 |
+
+### 调优建议
+
+- **并发数选择**：2 卡 9B 模型建议 `-c 2`，4 卡可以尝试 `-c 3~4`
+- **减少搜索延迟**：如果 snippet 信息足够，可在 system prompt 中引导模型使用 `fetch=False`
+- **避免慢站点**：Facebook/Instagram 等反爬站点容易超时，system prompt 已提示模型跳过

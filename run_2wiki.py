@@ -59,15 +59,15 @@ def run_eval(
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    output_dir = os.path.join(output_dir, mode)
+    output_dir = os.path.join(output_dir, "2wiki", mode, timestamp)
     traj_dir = os.path.join(traj_dir, mode, timestamp)
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(traj_dir, exist_ok=True)
 
-    progress_path = os.path.join(output_dir, f"group_{group_id}_2wiki_progress_{timestamp}.jsonl")
+    progress_path = os.path.join(output_dir, f"group_{group_id}_progress.jsonl")
 
-    result_path = os.path.join(output_dir, f"group_{group_id}_2wiki_{timestamp}.jsonl")
-    traj_path = os.path.join(output_dir, f"group_{group_id}_2wiki_traj_{timestamp}.jsonl")
+    result_path = os.path.join(output_dir, f"group_{group_id}_2wiki.jsonl")
+    traj_path = os.path.join(output_dir, f"group_{group_id}_2wiki_traj.jsonl")
 
     # Load existing progress for resume
     done_indices = set()

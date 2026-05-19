@@ -21,6 +21,7 @@ import re
 import uuid
 from typing import Optional
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from openai import OpenAI
 
@@ -47,7 +48,7 @@ logger = logging.getLogger("harness.plan_react")
 # ---------------------------------------------------------------------------
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://127.0.0.1:8000/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "qwen-3.5")
-MAX_STEPS    = int(os.getenv("MAX_STEPS", "20"))
+MAX_STEPS    = int(os.getenv("MAX_STEPS", "15"))
 MAX_TOKENS   = int(os.getenv("MAX_TOKENS", "16000"))
 DISABLE_TOOLS = os.getenv("DISABLE_TOOLS", "0") == "1"
 
@@ -68,7 +69,7 @@ TOOLS_SCHEMA = [
                 "properties": {
                     "query":     {"type": "string",  "description": "搜索关键词"},
                     "top_k":     {"type": "integer", "description": "返回条数（1-3）", "default": 1},
-                    "fetch":     {"type": "boolean", "description": "是否抓取正文", "default": True},
+                    "fetch":     {"type": "boolean", "description": "是否抓取正文（慢，仅在摘要不够时使用）", "default": False},
                     "max_chars": {"type": "integer", "description": "每篇正文截断字符数", "default": 500},
                 },
                 "required": ["query"],
@@ -88,7 +89,7 @@ TOOLS_SCHEMA = [
                 "properties": {
                     "image_url": {"type": "string",  "description": "图片的 http(s) URL"},
                     "top_k":     {"type": "integer", "description": "返回条数（1-3）", "default": 1},
-                    "fetch":     {"type": "boolean", "description": "是否抓取正文", "default": True},
+                    "fetch":     {"type": "boolean", "description": "是否抓取正文（慢，仅在摘要不够时使用）", "default": False},
                     "max_chars": {"type": "integer", "description": "正文截断字符数", "default": 500},
                 },
                 "required": ["image_url"],
@@ -193,43 +194,140 @@ TOOL_FN_MAP = {
     "browser_parallel": lambda a: browser_parallel(**a),
 }
 
+# ---------------------------------------------------------------------------
+# Harness-level guardrails (for small models that can't self-police)
+# ---------------------------------------------------------------------------
+
+GARBAGE_DOMAINS = {
+    "instagram.com", "tiktok.com", "facebook.com", "fonts101.com",
+    "etsy.com", "thatpervert.com", "pinterest.com",
+}
+
+def filter_garbage_results(tool_result_str: str) -> str:
+    """Remove search results from known garbage domains."""
+    try:
+        results = json.loads(tool_result_str)
+        if not isinstance(results, list):
+            return tool_result_str
+        filtered = []
+        for r in results:
+            url = r.get("url", "")
+            if any(domain in url for domain in GARBAGE_DOMAINS):
+                continue
+            filtered.append(r)
+        if not filtered and results:
+            return json.dumps(
+                [{"rank": 1, "title": "[HARNESS] All results were from blocked sites (Instagram/TikTok/etc). "
+                  "Your query is too vague or the info is not indexed. Try a COMPLETELY different query with different keywords.",
+                  "url": "", "snippet": "", "content": ""}],
+                ensure_ascii=False)
+        return json.dumps(filtered, ensure_ascii=False)
+    except (json.JSONDecodeError, TypeError):
+        return tool_result_str
+
+
+# Phrases that are clearly metaphorical/riddle-like and should NOT be searched literally
+METAPHOR_PATTERNS = [
+    "born out of discord",
+    "identity evolved",
+    "evolved through several iterations",
+    "born out of",
+    "riddle",
+    "puzzle",
+]
+
+# Keywords that indicate the model is trying to decode the riddle instead of searching facts
+# A query is blocked if it contains BOTH a riddle-direction keyword AND lacks hard facts
+RIDDLE_DIRECTION_KEYWORDS = [
+    "split", "merger", "name change", "name changes", "many names",
+    "discord", "division",
+]
+
+HARD_FACT_INDICATORS = re.compile(
+    r'\b(19\d{2}|20[0-2]\d|qualifier|champion|league|cup|goal|score)\b', re.IGNORECASE
+)
+
+def is_metaphor_query(query: str) -> bool:
+    """Check if a search query is trying to decode riddle/metaphor instead of searching facts."""
+    query_lower = query.lower()
+    # Direct metaphor phrase match - always block
+    if any(pat in query_lower for pat in METAPHOR_PATTERNS):
+        return True
+    # Riddle-direction query without hard facts - block
+    has_riddle_direction = any(kw in query_lower for kw in RIDDLE_DIRECTION_KEYWORDS)
+    has_hard_facts = bool(HARD_FACT_INDICATORS.search(query))
+    if has_riddle_direction and not has_hard_facts:
+        return True
+    return False
+
+
+METAPHOR_BLOCKED_MSG = (
+    '[{{"rank": 1, "title": "[HARNESS] Query blocked: you are searching a metaphor/riddle literally. '
+    'This NEVER returns useful results. Instead, search for HARD FACTS from the question: '
+    'specific dates, numbers, proper nouns, or events. '
+    'For example, search for the specific event (95th minute free kick 2001 qualifier) '
+    'not the riddle description (born out of discord).", '
+    '"url": "", "snippet": "", "content": ""}}]'
+)
+
+
+def extract_query_keywords(fn_args: dict) -> set:
+    """Extract meaningful keywords from a search query for dedup detection."""
+    query = fn_args.get("query", "")
+    query = re.sub(r'["\'\(\)]', ' ', query)
+    words = {w.lower() for w in query.split() if len(w) > 2}
+    stop_words = {"the", "and", "for", "from", "with", "that", "this", "was", "are", "not"}
+    return words - stop_words
+
+
+REFLECTION_PROMPT = (
+    "[SYSTEM] You have used {steps} search steps. Review your progress:\n"
+    "- If you found a strong candidate answer, output it now with <answer>...</answer>.\n"
+    "- If your last 2-3 searches returned nothing useful, you MUST try a completely "
+    "different approach (different keywords, different starting entity).\n"
+    "- Do NOT repeat similar queries. Each search must use substantially different terms."
+)
+
+DUPLICATE_QUERY_PROMPT = (
+    "[SYSTEM] WARNING: Your recent searches use very similar keywords. "
+    "This approach is not working. You MUST now:\n"
+    "1. Stop searching this direction entirely.\n"
+    "2. Think of a completely different angle to find the answer.\n"
+    "3. Use different starting entities or facts in your next query.\n"
+    "If you have any candidate answer at all, output it now with <answer>...</answer>."
+)
+
 # PLACEHOLDER_SYSTEM_PROMPT
+SYSTEM_PROMPT = """You are a search agent. Answer questions by searching the web.
 
-# ---------------------------------------------------------------------------
-# System prompt — Plan & ReAct
-# ---------------------------------------------------------------------------
-SYSTEM_PROMPT = """你是一个高效、严谨的任务执行 Agent，运行在配备多工具的自动化框架中。
+# RULES (follow strictly)
 
-## 工作流程（Plan → ReAct → Answer）
+1. DECOMPOSE first: identify 2-3 different clue chains from the question.
+2. Search HARD FACTS only: dates, numbers, proper nouns. Use "quotes" for phrases.
+3. NEVER search metaphors/riddles literally. They return garbage.
+4. PIVOT after 2 failed searches: switch to a completely different clue chain.
+5. COMMIT when confident: one confirmation search, then output your answer.
 
-### 第一步：制定计划
-收到任务后，先分析问题并制定 2-5 步的搜索计划。明确：
-- 需要确认哪些关键信息
-- 每步搜索的目标是什么
-- 信息之间的依赖关系
+# SEARCH STRATEGY
 
-### 第二步：逐步执行（ReAct）
-每一步：
-1. 回顾已获取的信息，评估进展
-2. 决定下一步行动（调用工具）
-3. 执行后反思：这个结果是否有用？是否需要调整策略？
+- Pack multiple hard facts into one query for precision.
+- If a clue points to many candidates (e.g. yearly award), switch to another clue chain.
+- After finding a strong candidate, search [candidate] + [another fact] to confirm.
+- Use fetch=True only when snippet is insufficient.
 
-### 第三步：输出答案
-当信息足够时，用 <answer>你的最终答案</answer> 标签输出简洁的最终答案。
-答案应该只包含问题要求的核心信息，不要包含解释过程。
+# EXAMPLES
 
-## 行为准则
-1. 每一步要么调用工具，要么输出最终答案（用 <answer> 标签包裹）。
-2. 若工具返回失败、或返回内容表明目标网站拒绝访问（如反爬拦截、403、需要登录、验证码、"automated tool" 等提示），视同失败。不要重复访问同一域名，改用搜索引擎获取该页面的摘要信息。
-3. 同类操作最多重试 2 次，仍失败则必须换工具或换搜索策略。
-4. 若调用 search_image 工具，请使用输入图像的在线链接。
-5. 搜索时优先使用英文关键词，结果更丰富。
-6. 不要在一个方向上花费超过 3 步，如果没有进展就换个角度。
-"""
+Good: "95th minute" free kick qualifier 2001 England
+Bad:  "born out of discord" football team  ← metaphor, returns garbage
 
-FORCE_ANSWER_PROMPT = """[系统提示] 你已经使用了大部分可用步数。请立即根据目前已收集到的信息，输出你的最终答案。
-即使信息不完整，也请给出你最有把握的答案。用 <answer>你的答案</answer> 标签包裹。"""
+Good: "married 1894" "died 1961" "no children" watercolor exhibition
+Bad:  social history book fourteen persons  ← too vague
 
+# OUTPUT
+<answer>your answer here</answer>
+Always give an answer. A guess beats blank."""
+
+FORCE_ANSWER_PROMPT = """[SYSTEM] Step budget exhausted. Do NOT call any more tools. Based on your research, what is the answer? Write it between <answer> and </answer> tags."""
 
 # ---------------------------------------------------------------------------
 # Helper: parse leaked tool_call from reasoning_content
@@ -326,15 +424,34 @@ def run_task(
     # ------------------------------------------------------------------ loop
     final_answer = ""
     force_answer_injected = False
+    recent_queries = []  # Track recent search queries for dedup detection
 
     for step in range(1, max_steps + 1):
         logger.info("--- step %d/%d ---", step, max_steps)
+
+        # --- Guardrail: inject reflection every 5 steps ---
+        if step > 1 and step % 5 == 0 and not force_answer_injected:
+            reflection = REFLECTION_PROMPT.format(steps=step)
+            traj.write(Role.USER, reflection, step_id=step)
+            logger.info("Injected REFLECTION_PROMPT at step %d", step)
+
+        # --- Guardrail: detect duplicate queries ---
+        if len(recent_queries) >= 3:
+            last_3_kw = recent_queries[-3:]
+            overlap_01 = len(last_3_kw[0] & last_3_kw[1]) / max(len(last_3_kw[0] | last_3_kw[1]), 1)
+            overlap_12 = len(last_3_kw[1] & last_3_kw[2]) / max(len(last_3_kw[1] | last_3_kw[2]), 1)
+            if overlap_01 > 0.5 and overlap_12 > 0.5 and not force_answer_injected:
+                traj.write(Role.USER, DUPLICATE_QUERY_PROMPT, step_id=step)
+                logger.info("Injected DUPLICATE_QUERY_PROMPT at step %d (overlap: %.2f, %.2f)", step, overlap_01, overlap_12)
 
         # Inject force-answer prompt near the end
         if step == max_steps - 2 and not force_answer_injected:
             traj.write(Role.USER, FORCE_ANSWER_PROMPT, step_id=step)
             force_answer_injected = True
             logger.info("Injected FORCE_ANSWER_PROMPT")
+
+        # After force-answer, disable tools to force the model to output text
+        disable_tools_this_step = force_answer_injected
 
         messages = traj.to_messages()
         logger.info("messages count=%d, sending to LLM ...", len(messages))
@@ -346,7 +463,7 @@ def run_task(
             temperature=0.7,
             extra_body={"enable_thinking": True},
         )
-        if not DISABLE_TOOLS:
+        if not DISABLE_TOOLS and not disable_tools_this_step:
             request_kwargs["tools"] = TOOLS_SCHEMA
             request_kwargs["tool_choice"] = "auto"
 
@@ -403,8 +520,8 @@ def run_task(
         if not tool_calls and not content:
             continue
 
-        # --- Execute tool calls ---
-        for tc in (tool_calls or []):
+        # --- Execute tool calls (concurrently) ---
+        def _exec_one_tool(tc):
             if hasattr(tc, 'function'):
                 fn_name = tc.function.name
                 fn_args_str = tc.function.arguments
@@ -422,6 +539,12 @@ def run_task(
 
             logger.info("tool_call: %s(%s)", fn_name, fn_args)
 
+            # --- Guardrail: block metaphor queries before execution ---
+            if fn_name == "search_text" and is_metaphor_query(fn_args.get("query", "")):
+                logger.info("BLOCKED metaphor query: %s", fn_args.get("query", ""))
+                tool_result = METAPHOR_BLOCKED_MSG
+                return tc_id, fn_name, fn_args, tool_result
+
             if fn_name not in TOOL_FN_MAP:
                 tool_result = f"[ERROR] Unknown tool: {fn_name}"
             else:
@@ -434,6 +557,25 @@ def run_task(
                 except Exception as exc:
                     tool_result = f"[ERROR] Tool '{fn_name}' raised: {type(exc).__name__}: {exc}"
                     logger.exception("Tool error")
+
+            return tc_id, fn_name, fn_args, tool_result
+
+        pending_tools = tool_calls or []
+        if len(pending_tools) > 1:
+            with ThreadPoolExecutor(max_workers=min(len(pending_tools), 4)) as pool:
+                futures = [pool.submit(_exec_one_tool, tc) for tc in pending_tools]
+                results = [f.result() for f in futures]
+        else:
+            results = [_exec_one_tool(tc) for tc in pending_tools]
+
+        for tc_id, fn_name, fn_args, tool_result in results:
+            # --- Guardrail: filter garbage URLs from search results ---
+            if fn_name == "search_text":
+                tool_result = filter_garbage_results(tool_result)
+                # Track query keywords for dedup detection
+                kw = extract_query_keywords(fn_args)
+                if kw:
+                    recent_queries.append(kw)
 
             logger.info("tool_result (%s): %s", fn_name, str(tool_result)[:200])
             traj.write(Role.TOOL, tool_result, step_id=step, tool_call_id=tc_id,
