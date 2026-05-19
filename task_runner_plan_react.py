@@ -222,6 +222,14 @@ LOW_SIGNAL_PATTERNS = [
     "[jina-error]", "[proxy-error]", "just a moment...",
 ]
 
+LOW_SIGNAL_URL_PATTERNS = [
+    "/catalogsearch/", "/result/index", "/search?", "/tag/", "/products/",
+]
+
+ERROR_SIGNAL_PATTERNS = [
+    "[error]", "[proxy-error]", "readtimeout", "timed out", "httpsconnectionpool",
+]
+
 STATE_SEQUENCE = ["S0_PARSE", "S1_SUBJECT", "S2_EVENT", "S3_DETAIL", "S4_DONE"]
 MAX_TRIALS_PER_STATE = 3
 LOW_SIGNAL_PIVOT_THRESHOLD = 2
@@ -233,22 +241,26 @@ STATE_INSTRUCTION = {
         "[SYSTEM][STATE=S0_PARSE] Parse the question into searchable facts only.\n"
         "- Extract hard facts (years, scores, minutes, proper nouns, event type).\n"
         "- Ignore metaphorical/riddle language.\n"
-        "- Plan 2-3 clue chains; next query must use one chain with 2-3 facts."
+        "- Plan 2-3 clue chains; next query must use one chain with 2-3 facts.\n"
+        "- Exactly one search query this step; use: <year/range> + <event/detail> + <unique constraint>."
     ),
     "S1_SUBJECT": (
         "[SYSTEM][STATE=S1_SUBJECT] Identify the subject candidate.\n"
         "- Use precise snippet search (fetch=false first).\n"
-        "- If 2 low-signal results happen, pivot to a different clue chain."
+        "- If 2 low-signal results happen, pivot to a different clue chain.\n"
+        "- Query template: <candidate hypothesis> + <hard fact 1> + <hard fact 2>."
     ),
     "S2_EVENT": (
         "[SYSTEM][STATE=S2_EVENT] Verify event alignment for the candidate.\n"
         "- Run one independent confirmation query using another fact.\n"
-        "- Reject candidate if key constraints conflict."
+        "- Reject candidate if key constraints conflict.\n"
+        "- Query template: <candidate> + <independent event/time fact>."
     ),
     "S3_DETAIL": (
         "[SYSTEM][STATE=S3_DETAIL] Extract the requested final detail.\n"
         "- Verify with at least two independent sources when possible.\n"
-        "- Keep answer concise and exact."
+        "- Keep answer concise and exact.\n"
+        "- Query template: <candidate> + <exact asked detail>."
     ),
 }
 
@@ -256,6 +268,13 @@ CONFLICT_PIVOT_PROMPT = (
     "[SYSTEM] Candidate-event alignment conflict detected. Your current candidate does not satisfy "
     "key constraints from the question (timeframe/event/details). Roll back to candidate discovery "
     "and pivot to a new clue chain with 2-3 hard facts only."
+)
+
+SEARCH_DEGRADED_PROMPT = (
+    "[SYSTEM] Search backend is degraded (consecutive timeouts/errors). "
+    "Do NOT keep calling search_text repeatedly. "
+    "Preferred fallback: use browser_navigate on one reliable source URL if available; "
+    "otherwise conclude with <answer confidence=\"low\">...</answer>."
 )
 
 
@@ -397,15 +416,33 @@ def _looks_low_signal_result(item: dict) -> bool:
         return True
     if any(domain in url for domain in LOW_SIGNAL_DOMAINS):
         return True
+    if any(pat in url for pat in LOW_SIGNAL_URL_PATTERNS):
+        return True
     if any(pat in text_blob for pat in LOW_SIGNAL_PATTERNS):
         return True
     return False
+
+
+def _is_error_signal_text(text: str) -> bool:
+    s = (text or "").lower()
+    return any(pat in s for pat in ERROR_SIGNAL_PATTERNS)
 
 
 def filter_garbage_results(tool_result_str: str) -> tuple[str, bool]:
     """
     Remove low-quality/noisy results and return `(filtered_json, has_signal)`.
     """
+    if _is_error_signal_text(tool_result_str):
+        return json.dumps(
+            [{
+                "rank": 1,
+                "title": "[HARNESS] Search tool error/timeout. Treat as low-signal and pivot.",
+                "url": "",
+                "snippet": str(tool_result_str)[:500],
+                "content": "",
+            }],
+            ensure_ascii=False,
+        ), False
     try:
         results = json.loads(tool_result_str)
         if not isinstance(results, list):
@@ -431,6 +468,8 @@ def filter_garbage_results(tool_result_str: str) -> tuple[str, bool]:
         has_signal = bool(filtered) and (allowlist_hit or len(filtered_domains) >= 1)
         return json.dumps(filtered, ensure_ascii=False), has_signal
     except (json.JSONDecodeError, TypeError):
+        if _is_error_signal_text(tool_result_str):
+            return tool_result_str, False
         return tool_result_str, True
 
 
@@ -765,8 +804,11 @@ def run_task(
     evidence_domains = set()
     state_domain_evidence = {s: set() for s in STATE_SEQUENCE}
     candidate_votes = {}
+    candidate_domain_evidence = {}
     best_candidate = None
     event_alignment = 0
+    timeout_streak = 0
+    search_degraded_mode = False
 
     for step in range(1, max_steps + 1):
         logger.info("--- step %d/%d ---", step, max_steps)
@@ -787,6 +829,11 @@ def run_task(
             logger.info("Injected LOW_SIGNAL_PIVOT_PROMPT at step %d", step)
             # Low signal in one state => consume trial budget faster to force a chain switch.
             state_attempts[current_state] += 1
+
+        if timeout_streak >= 2 and not search_degraded_mode and not force_answer_injected:
+            traj.write(Role.USER, SEARCH_DEGRADED_PROMPT, step_id=step)
+            search_degraded_mode = True
+            logger.info("Injected SEARCH_DEGRADED_PROMPT at step %d", step)
 
         # --- Guardrail: detect duplicate queries ---
         if len(recent_queries) >= 3:
@@ -903,6 +950,12 @@ def run_task(
 
             # Search arg normalization for better recall/precision.
             if fn_name == "search_text":
+                if timeout_streak >= 2:
+                    blocked = (
+                        '[{"rank":1,"title":"[HARNESS] search_text temporarily disabled after consecutive timeouts.",'
+                        '"url":"","snippet":"Switch tool path or return low-confidence answer.","content":""}]'
+                    )
+                    return tc_id, fn_name, fn_args, blocked
                 query = str(fn_args.get("query", "")).strip()
                 query = re.sub(r"\s+", " ", query)
                 fn_args["query"] = query
@@ -960,6 +1013,11 @@ def run_task(
             # --- Guardrail: filter garbage URLs from search results ---
             if fn_name == "search_text":
                 tool_result, has_signal = filter_garbage_results(tool_result)
+                is_timeout_like = _is_error_signal_text(tool_result)
+                if is_timeout_like:
+                    timeout_streak += 1
+                elif has_signal:
+                    timeout_streak = 0
                 if has_signal:
                     low_signal_streak = 0
                 else:
@@ -973,10 +1031,13 @@ def run_task(
                     evidence_domains.update(domains)
                     state_domain_evidence[current_state].update(domains)
                     event_alignment += _event_alignment_score(instruction, parsed_results)
-                    for cand in _extract_candidates(parsed_results):
-                        candidate_votes[cand] = candidate_votes.get(cand, 0) + 1
-                        if not best_candidate or candidate_votes[cand] > candidate_votes.get(best_candidate, 0):
-                            best_candidate = cand
+                    for item in parsed_results:
+                        item_domains = _collect_domains_from_results([item])
+                        for cand in _extract_candidates([item]):
+                            candidate_votes[cand] = candidate_votes.get(cand, 0) + 1
+                            candidate_domain_evidence.setdefault(cand, set()).update(item_domains)
+                            if not best_candidate or candidate_votes[cand] > candidate_votes.get(best_candidate, 0):
+                                best_candidate = cand
                 # Track query keywords for dedup detection
                 kw = extract_query_keywords(fn_args)
                 if kw:
@@ -991,13 +1052,17 @@ def run_task(
             if recent_queries:
                 state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
         elif current_state == "S1_SUBJECT":
-            if best_candidate and candidate_votes.get(best_candidate, 0) >= 2:
+            if (
+                best_candidate
+                and candidate_votes.get(best_candidate, 0) >= 2
+                and len(candidate_domain_evidence.get(best_candidate, set())) >= 2
+            ):
                 state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
         elif current_state == "S2_EVENT":
             if (
                 best_candidate
                 and candidate_votes.get(best_candidate, 0) >= 2
-                and len(evidence_domains) >= MIN_INDEPENDENT_SOURCES
+                and len(candidate_domain_evidence.get(best_candidate, set())) >= MIN_INDEPENDENT_SOURCES
                 and event_alignment >= 2
             ):
                 state_index = min(state_index + 1, len(STATE_SEQUENCE) - 1)
