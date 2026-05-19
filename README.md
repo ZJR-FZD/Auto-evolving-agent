@@ -8,32 +8,78 @@
 
 ## 比赛评测（快速开始）
 
-### 跑 Benchmark（比赛提交）
+### 前置条件
+
+- Sglang LLM 服务已启动（默认 `http://127.0.0.1:8000/v1`）
+- search-proxy 已运行（`SEARCH_PROXY_URL=http://127.0.0.1:8090`）
+- browser-service 已运行（可选，部分题需要）
+
+### 1. Benchmark 打榜数据集（100 题）
 
 ```bash
 cd /inspire/qb-ilm2/project/26summer-camp-01/26210094/harness-sii
 
-# 跑全部 100 题
+# 测试：跑 1 题纯文本 + 1 题图片
+python run_benchmark.py --group 7 --start 0 --end 1
+python run_benchmark.py --group 7 --start 50 --end 51
+
+# 完整跑一遍
 python run_benchmark.py --group 7
-
-# 先跑前 3 题测试
-python run_benchmark.py --group 7 --start 0 --end 3
-
-# 指定输出目录
-python run_benchmark.py --group 7 -o my_results
 ```
 
-**结果文件位置**（默认在 `results/` 目录下）：
+输出：
+- `results/group_7_benchmark.jsonl` — 结果（格式：`{index, instruction, image, answer, pred}`）
+- `results/group_7_benchmark_traj.jsonl` — 轨迹
+- `results/group_7.zip` — 提交用压缩包
 
-| 文件 | 说明 |
-|------|------|
-| `results/group_X.csv` | 答案文件（problem + image + answer 列） |
-| `results/group_X.json` | 推理轨迹文件（每题的完整 Agent 交互记录） |
-| `results/group_X.zip` | 提交用压缩包（包含上面两个文件） |
-| `results/group_X_progress.jsonl` | 进度文件（支持断点续跑） |
-| `trajectories/benchmark/bench_XXX.jsonl` | 每题的原始轨迹 |
+### 2. SimpleVQA 评测集（99 题，图文问答）
 
-断点续跑：中断后重新运行同样的命令，已完成的题目会自动跳过。
+```bash
+# 测试：跑前 2 题
+python run_simpleqa.py --group 7 --start 0 --end 2
+
+# 完整跑一遍
+python run_simpleqa.py --group 7
+```
+
+输出：
+- `results/group_7_simpleqa.jsonl` — 结果（格式：`{index, instruction, image, answer, pred}`）
+- `results/group_7_simpleqa_traj.jsonl` — 轨迹
+
+### 3. 2Wiki 评测集（100 题，纯文本多跳问答）
+
+```bash
+# 测试：跑前 2 题
+python run_2wiki.py --group 7 --start 0 --end 2
+
+# 完整跑一遍
+python run_2wiki.py --group 7
+```
+
+输出：
+- `results/group_7_2wiki.jsonl` — 结果（格式：`{index, instruction, image, answer, pred}`）
+- `results/group_7_2wiki_traj.jsonl` — 轨迹
+
+### 断点续跑
+
+所有脚本都支持断点续跑。中断后重新运行同样的命令，已完成的题目自动跳过。
+进度文件在 `results/group_7_*_progress.jsonl`，如需重跑某个数据集，删掉对应 progress 文件即可。
+
+### 提交文件清单
+
+所有结果文件格式统一：`{"index":, "instruction":, "image":, "answer":, "pred":}`
+
+- 评测集：`answer` = ground truth，`pred` = 模型预测
+- 打榜集：`answer` = 空（无 ground truth），`pred` = 模型预测
+
+| 提交项 | 文件 | 说明 |
+|--------|------|------|
+| 评测集 SimpleVQA 结果 | `group_7_simpleqa.jsonl` | 99 条，含 answer 和 pred |
+| 评测集 SimpleVQA 轨迹 | `group_7_simpleqa_traj.jsonl` | 每行一个 trajectory step |
+| 评测集 2Wiki 结果 | `group_7_2wiki.jsonl` | 100 条，含 answer 和 pred |
+| 评测集 2Wiki 轨迹 | `group_7_2wiki_traj.jsonl` | 每行一个 trajectory step |
+| 打榜数据集结果 | `group_7_benchmark.jsonl` | 100 条，answer 为空，pred 为模型输出 |
+| 打榜数据集轨迹 | `group_7_benchmark_traj.jsonl` | 每行一个 trajectory step |
 
 ### Benchmark 数据集说明
 

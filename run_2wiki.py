@@ -1,17 +1,16 @@
 """
-SimpleVQA Evaluation Runner — 评测集
-=====================================
+2Wiki Evaluation Runner — 评测集
+=================================
 输出格式：
   结果: {"index":, "instruction":, "image":, "answer":, "pred":}
   轨迹: 所有题目的 trajectory 拼接成一个 JSONL
 
 Usage:
-    python run_simpleqa.py --group 7
-    python run_simpleqa.py --group 7 --start 0 --end 5
+    python run_2wiki.py --group 7
+    python run_2wiki.py --group 7 --start 0 --end 5
 """
 
 import argparse
-import base64
 import json
 import logging
 import os
@@ -23,10 +22,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
 )
-logger = logging.getLogger("eval.simpleqa")
+logger = logging.getLogger("eval.2wiki")
 
-DATASET_PATH = "/inspire/qb-ilm2/project/26summer-camp-01/26210094/datasets/simpleVQA/SimpleVQA.jsonl"
-IMAGE_DIR = "/inspire/qb-ilm2/project/26summer-camp-01/26210094/datasets/simpleVQA"
+DATASET_PATH = "/inspire/qb-ilm2/project/26summer-camp-01/26210094/datasets/2wiki.jsonl"
 
 
 def load_dataset(path: str) -> list[dict]:
@@ -41,22 +39,21 @@ def load_dataset(path: str) -> list[dict]:
 def run_eval(
     dataset: list[dict],
     group_id: str,
-    image_dir: str = IMAGE_DIR,
     output_dir: str = "results",
-    traj_dir: str = "trajectories/simpleqa",
+    traj_dir: str = "trajectories/2wiki",
     start: int = 0,
     end: int | None = None,
 ):
     end = end or len(dataset)
     subset = dataset[start:end]
-    logger.info("Running SimpleVQA eval: %d items [%d:%d]", len(subset), start, end)
+    logger.info("Running 2Wiki eval: %d items [%d:%d]", len(subset), start, end)
 
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(traj_dir, exist_ok=True)
 
-    result_path = os.path.join(output_dir, f"group_{group_id}_simpleqa.jsonl")
-    traj_path = os.path.join(output_dir, f"group_{group_id}_simpleqa_traj.jsonl")
-    progress_path = os.path.join(output_dir, f"group_{group_id}_simpleqa_progress.jsonl")
+    result_path = os.path.join(output_dir, f"group_{group_id}_2wiki.jsonl")
+    traj_path = os.path.join(output_dir, f"group_{group_id}_2wiki_traj.jsonl")
+    progress_path = os.path.join(output_dir, f"group_{group_id}_2wiki_progress.jsonl")
 
     # Load existing progress for resume
     done_indices = set()
@@ -75,24 +72,15 @@ def run_eval(
             continue
 
         question = item["question"]
-        answer = item["answer"]
-        image_rel = item.get("image", "")
-        image_url = item.get("image_url", "")
+        answer = item.get("answer", "")
 
         logger.info("[%d/%d] q=%s", idx, end, question[:60])
 
-        # Load local image as base64
-        image_b64 = None
-        image_path = os.path.join(image_dir, image_rel) if image_rel else ""
-        if image_path and os.path.isfile(image_path):
-            with open(image_path, "rb") as f:
-                image_b64 = base64.b64encode(f.read()).decode()
-
         task = {
-            "id": f"simpleqa_{idx:03d}",
+            "id": f"2wiki_{idx:03d}",
             "instruction": question,
-            "image_b64": image_b64,
-            "image_url": image_url if image_url else None,
+            "image_b64": None,
+            "image_url": None,
         }
 
         t0 = time.time()
@@ -109,7 +97,7 @@ def run_eval(
         with open(progress_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(progress_rec, ensure_ascii=False) + "\n")
 
-        logger.info("  => pred=%s  gt=%s  %.1fs", pred[:50], answer, elapsed)
+        logger.info("  => pred=%s  gt=%s  %.1fs", pred[:50], answer[:30], elapsed)
 
     # --- Assemble final outputs ---
     all_preds = {}
@@ -126,17 +114,17 @@ def run_eval(
             rec = {
                 "index": j,
                 "instruction": item["question"],
-                "image": item.get("image", ""),
-                "answer": item["answer"],
+                "image": "",
+                "answer": item.get("answer", ""),
                 "pred": all_preds.get(j, ""),
             }
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
     logger.info("Results saved to %s", result_path)
 
-    # 2. Trajectory JSONL: concatenate all simpleqa_XXX.jsonl
+    # 2. Trajectory JSONL: concatenate all 2wiki_XXX.jsonl
     with open(traj_path, "w", encoding="utf-8") as out:
         for j in range(len(dataset)):
-            tf = os.path.join(traj_dir, f"simpleqa_{j:03d}.jsonl")
+            tf = os.path.join(traj_dir, f"2wiki_{j:03d}.jsonl")
             if os.path.exists(tf):
                 with open(tf, "r", encoding="utf-8") as inp:
                     for line in inp:
@@ -146,12 +134,11 @@ def run_eval(
 
 
 def main():
-    p = argparse.ArgumentParser(description="SimpleVQA eval runner (评测集)")
+    p = argparse.ArgumentParser(description="2Wiki eval runner (评测集)")
     p.add_argument("--group", "-g", default="7")
     p.add_argument("--dataset", default=DATASET_PATH)
-    p.add_argument("--image-dir", default=IMAGE_DIR)
     p.add_argument("--output-dir", "-o", default="results")
-    p.add_argument("--traj-dir", default="trajectories/simpleqa")
+    p.add_argument("--traj-dir", default="trajectories/2wiki")
     p.add_argument("--start", type=int, default=0)
     p.add_argument("--end", type=int, default=None)
     args = p.parse_args()
@@ -162,7 +149,6 @@ def main():
     run_eval(
         dataset=dataset,
         group_id=args.group,
-        image_dir=args.image_dir,
         output_dir=args.output_dir,
         traj_dir=args.traj_dir,
         start=args.start,

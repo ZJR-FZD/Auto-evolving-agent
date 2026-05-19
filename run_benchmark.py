@@ -1,13 +1,13 @@
 """
-Benchmark Runner for Competition
-=================================
-Reads benchmark.csv, runs each question through the agent,
-saves trajectories to group_{}.json and answers to group_{}.csv,
-then zips both files.
+Benchmark Runner — 打榜数据集
+==============================
+输出格式：
+  结果: {"index":, "instruction":, "image":, "answer":}
+  轨迹: 所有题目的 trajectory 拼接成一个 JSONL
 
 Usage:
-    python run_benchmark.py --group 1
-    python run_benchmark.py --group 1 --start 0 --end 10   # partial run
+    python run_benchmark.py --group 7
+    python run_benchmark.py --group 7 --start 0 --end 3
 """
 
 import argparse
@@ -18,7 +18,6 @@ import os
 import sys
 import time
 import zipfile
-from pathlib import Path
 
 csv.field_size_limit(sys.maxsize)
 
@@ -31,7 +30,6 @@ logging.basicConfig(
 logger = logging.getLogger("eval.benchmark")
 
 DATASET_PATH = "/inspire/qb-ilm2/project/26summer-camp-01/26210094/datasets/benchmark.csv"
-DEFAULT_GROUP = "7"
 
 
 def load_benchmark(path: str) -> list[dict]:
@@ -58,30 +56,20 @@ def run_benchmark(
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(traj_dir, exist_ok=True)
 
-    json_path = os.path.join(output_dir, f"group_{group_id}.json")
-    csv_path = os.path.join(output_dir, f"group_{group_id}.csv")
+    result_path = os.path.join(output_dir, f"group_{group_id}_benchmark.jsonl")
+    traj_path = os.path.join(output_dir, f"group_{group_id}_benchmark_traj.jsonl")
     zip_path = os.path.join(output_dir, f"group_{group_id}.zip")
+    progress_path = os.path.join(output_dir, f"group_{group_id}_benchmark_progress.jsonl")
 
-    # Load existing progress if resuming
-    all_trajectories = []
-    answers = [""] * len(dataset)
-    progress_path = os.path.join(output_dir, f"group_{group_id}_progress.jsonl")
-
-    if os.path.exists(progress_path):
-        with open(progress_path, "r", encoding="utf-8") as f:
-            for line in f:
-                rec = json.loads(line.strip())
-                idx = rec["index"]
-                answers[idx] = rec["answer"]
-                all_trajectories.append(rec["trajectory"])
-        logger.info("Resumed from progress: %d items done", len(all_trajectories))
-
+    # Load existing progress for resume
     done_indices = set()
     if os.path.exists(progress_path):
         with open(progress_path, "r", encoding="utf-8") as f:
             for line in f:
-                rec = json.loads(line.strip())
-                done_indices.add(rec["index"])
+                if line.strip():
+                    rec = json.loads(line)
+                    done_indices.add(rec["index"])
+        logger.info("Resumed: %d items already done", len(done_indices))
 
     for i, item in enumerate(subset):
         idx = start + i
@@ -108,71 +96,61 @@ def run_benchmark(
         except Exception as e:
             logger.error("run_task failed for idx=%d: %s", idx, e)
             answer = ""
-            result = {"error": str(e)}
         elapsed = time.time() - t0
 
-        # Read trajectory file for this task
-        traj_file = os.path.join(traj_dir, f"bench_{idx:03d}.jsonl")
-        traj_data = []
-        if os.path.exists(traj_file):
-            with open(traj_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    if line.strip():
-                        traj_data.append(json.loads(line))
-
-        trajectory_entry = {
-            "index": idx,
-            "problem": problem,
-            "has_image": image_b64 is not None,
-            "answer": answer,
-            "steps": result.get("steps", -1),
-            "elapsed_s": round(elapsed, 1),
-            "trajectory": traj_data,
-        }
-
-        answers[idx] = answer
-        all_trajectories.append(trajectory_entry)
-
-        # Save progress incrementally
+        # Save progress
+        progress_rec = {"index": idx, "answer": answer}
         with open(progress_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps({
-                "index": idx,
-                "answer": answer,
-                "trajectory": traj_data,
-            }, ensure_ascii=False) + "\n")
+            f.write(json.dumps(progress_rec, ensure_ascii=False) + "\n")
 
         logger.info("  => answer=%s  %.1fs", answer[:80], elapsed)
 
-    # --- Write final outputs ---
-    # 1. group_{}.json - all trajectories
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(all_trajectories, f, ensure_ascii=False, indent=2)
-    logger.info("Trajectories saved to %s", json_path)
+    # --- Assemble final outputs ---
+    # Reload all progress
+    all_answers = {}
+    if os.path.exists(progress_path):
+        with open(progress_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    rec = json.loads(line)
+                    all_answers[rec["index"]] = rec["answer"]
 
-    # 2. group_{}.csv - answers
-    with open(csv_path, "w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=["problem", "image", "answer"])
-        writer.writeheader()
-        for j, row in enumerate(dataset):
-            writer.writerow({
-                "problem": row["problem"],
-                "image": row.get("image", ""),
-                "answer": answers[j],
-            })
-    logger.info("Answers saved to %s", csv_path)
+    # 1. Result JSONL: {"index":, "instruction":, "image":, "answer":, "pred":}
+    with open(result_path, "w", encoding="utf-8") as f:
+        for j in range(len(dataset)):
+            rec = {
+                "index": j,
+                "instruction": dataset[j]["problem"],
+                "image": dataset[j].get("image", "").strip() or "",
+                "answer": "",
+                "pred": all_answers.get(j, ""),
+            }
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+    logger.info("Results saved to %s", result_path)
 
-    # 3. group_{}.zip
+    # 2. Trajectory JSONL: concatenate all bench_XXX.jsonl
+    with open(traj_path, "w", encoding="utf-8") as out:
+        for j in range(len(dataset)):
+            tf = os.path.join(traj_dir, f"bench_{j:03d}.jsonl")
+            if os.path.exists(tf):
+                with open(tf, "r", encoding="utf-8") as inp:
+                    for line in inp:
+                        if line.strip():
+                            out.write(line)
+    logger.info("Trajectories saved to %s", traj_path)
+
+    # 3. Zip
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(json_path, f"group_{group_id}.json")
-        zf.write(csv_path, f"group_{group_id}.csv")
+        zf.write(result_path, f"group_{group_id}_benchmark.jsonl")
+        zf.write(traj_path, f"group_{group_id}_benchmark_traj.jsonl")
     logger.info("Zip saved to %s", zip_path)
 
     return zip_path
 
 
 def main():
-    p = argparse.ArgumentParser(description="Benchmark runner for competition")
-    p.add_argument("--group", "-g", required=True, help="Group ID number")
+    p = argparse.ArgumentParser(description="Benchmark runner (打榜数据集)")
+    p.add_argument("--group", "-g", default="7", help="Group ID")
     p.add_argument("--dataset", default=DATASET_PATH)
     p.add_argument("--output-dir", "-o", default="results")
     p.add_argument("--traj-dir", default="trajectories/benchmark")
@@ -191,7 +169,7 @@ def main():
         start=args.start,
         end=int(args.end) if args.end is not None else len(dataset),
     )
-    print(f"\nDone! Submission file: {zip_path}")
+    print(f"\nDone! Submission: {zip_path}")
 
 
 if __name__ == "__main__":
