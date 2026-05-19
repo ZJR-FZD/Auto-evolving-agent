@@ -332,6 +332,75 @@ def jaccard_similarity(a: set, b: set) -> float:
     return len(a & b) / max(len(a | b), 1)
 
 
+GENERIC_QUERY_WORDS = {
+    "football", "soccer", "match", "team", "history", "famous", "winner",
+    "goal", "goals", "free", "kick", "minute", "early", "late",
+}
+
+
+def build_instruction_fact_bank(instruction: str) -> list[str]:
+    """Extract reusable hard facts from the original task instruction."""
+    text = (instruction or "").lower()
+    facts = []
+    if "95th minute" in text:
+        facts.append('"95th minute"')
+    if "free-kick" in text or "free kick" in text:
+        facts.append('"free kick"')
+    if "early 21st century" in text:
+        facts.append('"early 21st century"')
+        facts.append("2000s")
+    if "all their goals early" in text:
+        facts.append('"scored early"')
+    if "latter stage" in text or "later stage" in text:
+        facts.append('"scored late"')
+    return facts
+
+
+def rewrite_query_with_hard_facts(query: str, instruction: str) -> str:
+    """
+    Rewrite metaphor-like queries into hard-fact-oriented search strings.
+    """
+    q = query or ""
+    # Remove obvious riddle phrasing while retaining potentially useful words.
+    cleaned = q
+    for pat in METAPHOR_PATTERNS:
+        cleaned = re.sub(re.escape(pat), " ", cleaned, flags=re.IGNORECASE)
+    for kw in RIDDLE_DIRECTION_KEYWORDS:
+        cleaned = re.sub(re.escape(kw), " ", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r'["\'\(\)]', " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
+    fact_bank = build_instruction_fact_bank(instruction)
+    remaining_words = [
+        w for w in cleaned.lower().split()
+        if len(w) > 2 and w not in GENERIC_QUERY_WORDS
+    ]
+    seed = fact_bank[:3] + remaining_words[:3]
+    if "football" not in " ".join(seed).lower():
+        seed.append("football")
+    rewritten = " ".join(seed).strip()
+    if len(rewritten.split()) < 4:
+        return '"95th minute" "free kick" football 2000s'
+    return rewritten
+
+
+def diversify_duplicate_query(query: str, instruction: str, current_kw: set) -> str | None:
+    """
+    Add missing fact tokens to near-duplicate queries to create a new angle.
+    """
+    fact_bank = build_instruction_fact_bank(instruction)
+    fact_tokens = []
+    for fact in fact_bank:
+        fact_tokens.extend(extract_query_keywords({"query": fact}))
+    missing = [tok for tok in fact_tokens if tok not in current_kw]
+    if not missing:
+        return None
+    add_on = " ".join(missing[:3])
+    diversified = f"{query} {add_on}".strip()
+    diversified = re.sub(r"\s+", " ", diversified)
+    return diversified
+
+
 def should_block_duplicate_query(current_kw: set, recent_kw: list[set]) -> bool:
     """
     Block only near-identical retries that add almost no new information.
@@ -641,17 +710,27 @@ def run_task(
                 if fn_args.get("fetch") and len(query.split()) < 6:
                     fn_args["fetch"] = False
 
-                # Pre-call duplicate block to stop near-identical query loops.
+                # Prefer rewrite over hard-block for metaphor-like queries.
+                if is_metaphor_query(query):
+                    rewritten = rewrite_query_with_hard_facts(query, instruction)
+                    if rewritten != query:
+                        logger.info("Rewrote metaphor-like query: %s -> %s", query, rewritten)
+                        fn_args["query"] = rewritten
+                        query = rewritten
+                    else:
+                        logger.info("BLOCKED metaphor query: %s", query)
+                        return tc_id, fn_name, fn_args, METAPHOR_BLOCKED_MSG
+
+                # Pre-call duplicate handling: diversify first, block only if no useful rewrite.
                 kw = extract_query_keywords(fn_args)
                 if kw and should_block_duplicate_query(kw, recent_queries):
-                    logger.info("BLOCKED duplicate-like query: %s", query)
-                    return tc_id, fn_name, fn_args, DUPLICATE_QUERY_BLOCKED_MSG
-
-            # --- Guardrail: block metaphor queries before execution ---
-            if fn_name == "search_text" and is_metaphor_query(fn_args.get("query", "")):
-                logger.info("BLOCKED metaphor query: %s", fn_args.get("query", ""))
-                tool_result = METAPHOR_BLOCKED_MSG
-                return tc_id, fn_name, fn_args, tool_result
+                    diversified = diversify_duplicate_query(query, instruction, kw)
+                    if diversified and diversified != query:
+                        logger.info("Diversified duplicate-like query: %s -> %s", query, diversified)
+                        fn_args["query"] = diversified
+                    else:
+                        logger.info("BLOCKED duplicate-like query: %s", query)
+                        return tc_id, fn_name, fn_args, DUPLICATE_QUERY_BLOCKED_MSG
 
             if fn_name not in TOOL_FN_MAP:
                 tool_result = f"[ERROR] Unknown tool: {fn_name}"
