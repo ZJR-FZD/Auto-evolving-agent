@@ -15,8 +15,14 @@ import json
 import logging
 import os
 import time
+from datetime import datetime
 
-from task_runner import run_task
+def _import_runner(mode: str):
+    if mode == "plan_react":
+        from task_runner_plan_react import run_task
+    else:
+        from task_runner import run_task
+    return run_task
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,17 +49,24 @@ def run_eval(
     traj_dir: str = "trajectories/2wiki",
     start: int = 0,
     end: int | None = None,
+    mode: str = "basic",
 ):
+    run_task = _import_runner(mode)
     end = end or len(dataset)
     subset = dataset[start:end]
-    logger.info("Running 2Wiki eval: %d items [%d:%d]", len(subset), start, end)
+    logger.info("Running 2Wiki eval [mode=%s]: %d items [%d:%d]", mode, len(subset), start, end)
 
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    output_dir = os.path.join(output_dir, mode)
+    traj_dir = os.path.join(traj_dir, mode, timestamp)
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(traj_dir, exist_ok=True)
 
-    result_path = os.path.join(output_dir, f"group_{group_id}_2wiki.jsonl")
-    traj_path = os.path.join(output_dir, f"group_{group_id}_2wiki_traj.jsonl")
     progress_path = os.path.join(output_dir, f"group_{group_id}_2wiki_progress.jsonl")
+
+    result_path = os.path.join(output_dir, f"group_{group_id}_2wiki_{timestamp}.jsonl")
+    traj_path = os.path.join(output_dir, f"group_{group_id}_2wiki_traj_{timestamp}.jsonl")
 
     # Load existing progress for resume
     done_indices = set()
@@ -139,6 +152,8 @@ def main():
     p.add_argument("--dataset", default=DATASET_PATH)
     p.add_argument("--output-dir", "-o", default="results")
     p.add_argument("--traj-dir", default="trajectories/2wiki")
+    p.add_argument("--mode", "-m", choices=["basic", "plan_react"], default="basic",
+                   help="Runner mode: basic (task_runner) or plan_react (task_runner_plan_react)")
     p.add_argument("--start", type=int, default=0)
     p.add_argument("--end", type=int, default=None)
     args = p.parse_args()
@@ -153,6 +168,7 @@ def main():
         traj_dir=args.traj_dir,
         start=args.start,
         end=int(args.end) if args.end is not None else len(dataset),
+        mode=args.mode,
     )
     print("\nDone!")
 
