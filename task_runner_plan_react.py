@@ -206,6 +206,7 @@ GARBAGE_DOMAINS = {
 LOW_SIGNAL_DOMAINS = {
     "youtube.com", "youtu.be", "reddit.com", "x.com", "twitter.com",
     "foxsports.com", "wfin.com", "tiktok.com", "instagram.com",
+    "onefootball.com", "namu.wiki",
 }
 
 LOW_SIGNAL_PATTERNS = [
@@ -273,23 +274,33 @@ METAPHOR_PATTERNS = [
 # Keywords that indicate the model is trying to decode the riddle instead of searching facts
 # A query is blocked if it contains BOTH a riddle-direction keyword AND lacks hard facts
 RIDDLE_DIRECTION_KEYWORDS = [
-    "split", "merger", "name change", "name changes", "many names",
-    "discord", "division",
+    "name change", "name changes", "many names",
+    "discord", "division", "riddle", "puzzle",
 ]
 
 HARD_FACT_INDICATORS = re.compile(
-    r'\b(19\d{2}|20[0-2]\d|qualifier|champion|league|cup|goal|score)\b', re.IGNORECASE
+    r'\b('
+    r'19\d{2}|20[0-2]\d|'
+    r'19\d{2}s|20[0-2]\ds|'
+    r'\d{1,3}(st|nd|rd|th)\s*minute|'
+    r'free[\s-]?kick|'
+    r'qualifier|champion|league|cup|goal|score|'
+    r'final|semi[\s-]?final|quarter[\s-]?final|'
+    r'vs|versus|against|derby'
+    r')\b',
+    re.IGNORECASE
 )
 
 def is_metaphor_query(query: str) -> bool:
     """Check if a search query is trying to decode riddle/metaphor instead of searching facts."""
     query_lower = query.lower()
-    # Direct metaphor phrase match - always block
-    if any(pat in query_lower for pat in METAPHOR_PATTERNS):
+    has_hard_facts = bool(HARD_FACT_INDICATORS.search(query))
+    # Direct metaphor phrase match - block only when query lacks hard facts.
+    has_direct_metaphor = any(pat in query_lower for pat in METAPHOR_PATTERNS)
+    if has_direct_metaphor and not has_hard_facts:
         return True
     # Riddle-direction query without hard facts - block
     has_riddle_direction = any(kw in query_lower for kw in RIDDLE_DIRECTION_KEYWORDS)
-    has_hard_facts = bool(HARD_FACT_INDICATORS.search(query))
     if has_riddle_direction and not has_hard_facts:
         return True
     return False
@@ -319,6 +330,24 @@ def jaccard_similarity(a: set, b: set) -> float:
     if not a and not b:
         return 1.0
     return len(a & b) / max(len(a | b), 1)
+
+
+def should_block_duplicate_query(current_kw: set, recent_kw: list[set]) -> bool:
+    """
+    Block only near-identical retries that add almost no new information.
+    """
+    if not current_kw or not recent_kw:
+        return False
+    last_window = recent_kw[-5:]
+    high_overlap_count = 0
+    for prev in last_window:
+        overlap = jaccard_similarity(current_kw, prev)
+        new_terms = len(current_kw - prev)
+        # Very high overlap and almost no new tokens => likely useless rewording.
+        if overlap >= 0.85 and new_terms <= 1:
+            high_overlap_count += 1
+    # Require repeated near-identical retries before blocking.
+    return high_overlap_count >= 2
 
 
 REFLECTION_PROMPT = (
@@ -614,7 +643,7 @@ def run_task(
 
                 # Pre-call duplicate block to stop near-identical query loops.
                 kw = extract_query_keywords(fn_args)
-                if kw and any(jaccard_similarity(kw, prev) > 0.75 for prev in recent_queries[-5:]):
+                if kw and should_block_duplicate_query(kw, recent_queries):
                     logger.info("BLOCKED duplicate-like query: %s", query)
                     return tc_id, fn_name, fn_args, DUPLICATE_QUERY_BLOCKED_MSG
 
