@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
+import json
 import logging
 import time
 from pathlib import Path
@@ -62,6 +64,51 @@ DATASET_PATH = (
 )
 
 
+def _dataset_fingerprint(path: Path) -> dict[str, object]:
+    path = Path(path)
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    stat = path.stat()
+    return {
+        "path": str(path),
+        "bytes": stat.st_size,
+        "sha256": digest.hexdigest(),
+    }
+
+
+def _source_id(item: dict) -> object:
+    return item.get("_id", item.get("id"))
+
+
+def _validate_resume_dataset(metadata_path: Path, current_fingerprint: dict[str, object]) -> None:
+    if not metadata_path.exists():
+        return
+
+    with metadata_path.open("r", encoding="utf-8") as f:
+        existing_metadata = json.load(f)
+
+    previous_fingerprint = existing_metadata.get("dataset_fingerprint")
+    if not previous_fingerprint:
+        raise ValueError(
+            "Cannot safely resume this 2Wiki run because its metadata has no "
+            "dataset_fingerprint. The 2Wiki dataset has changed, so reusing old "
+            "index-based results may mix predictions from different questions. "
+            "Use a new --run-name, --overwrite, or pass --allow-dataset-mismatch "
+            "if you intentionally want to resume anyway."
+        )
+
+    if previous_fingerprint.get("sha256") != current_fingerprint.get("sha256"):
+        raise ValueError(
+            "Cannot resume this 2Wiki run because the dataset content differs "
+            f"from the original run. previous_sha256={previous_fingerprint.get('sha256')} "
+            f"current_sha256={current_fingerprint.get('sha256')}. Use a new "
+            "--run-name, --overwrite, or pass --allow-dataset-mismatch if this "
+            "is intentional."
+        )
+
+
 def load_dataset(path: Path) -> list[dict]:
     return read_jsonl(path)
 
@@ -75,7 +122,7 @@ def _result_row(index: int, item: dict, result: dict, elapsed: float) -> dict:
         "answer": item.get("answer", ""),
         "pred": pred,
         "task_id": f"2wiki_{index:03d}",
-        "source_id": item.get("id"),
+        "source_id": _source_id(item),
         "question_type": item.get("type"),
         "prediction": pred,
         "steps": result.get("steps", 0),
@@ -92,7 +139,7 @@ def _error_row(index: int, item: dict, error: str) -> dict:
         "answer": item.get("answer", ""),
         "pred": "",
         "task_id": f"2wiki_{index:03d}",
-        "source_id": item.get("id"),
+        "source_id": _source_id(item),
         "question_type": item.get("type"),
         "prediction": "",
         "steps": 0,
@@ -150,6 +197,11 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--resume", action="store_true", help="Resume an existing --run-name by skipping indices already in predictions.jsonl")
     parser.add_argument("--overwrite", action="store_true", help="Delete an existing --run-name before running")
+    parser.add_argument(
+        "--allow-dataset-mismatch",
+        action="store_true",
+        help="Allow --resume even when the existing run metadata was created from a different 2Wiki dataset",
+    )
     return parser.parse_args()
 
 
@@ -211,6 +263,7 @@ def main() -> None:
     started_at = time.time()
 
     dataset = load_dataset(args.dataset)
+    dataset_fingerprint = _dataset_fingerprint(args.dataset)
     end = args.end if args.end is not None else len(dataset)
     selected = list(enumerate(dataset[args.start:end], start=args.start))
     run_dir = prepare_run_dir(
@@ -221,6 +274,11 @@ def main() -> None:
         overwrite=args.overwrite,
     )
     paths = run_paths(run_dir)
+
+    if args.resume and not args.allow_dataset_mismatch:
+        _validate_resume_dataset(paths["metadata"], dataset_fingerprint)
+    elif args.resume and args.allow_dataset_mismatch:
+        logger.warning("Skipping 2Wiki dataset fingerprint validation because --allow-dataset-mismatch was passed")
 
     if paths["predictions"].exists() and args.overwrite:
         paths["predictions"].unlink()
@@ -233,6 +291,8 @@ def main() -> None:
     metadata = {
         "dataset": "2wiki",
         "dataset_path": args.dataset,
+        "dataset_fingerprint": dataset_fingerprint,
+        "resume_dataset_mismatch_allowed": bool(args.allow_dataset_mismatch),
         "group": args.group,
         "run_dir": run_dir,
         "prediction_path": paths["predictions"],

@@ -20,6 +20,7 @@ Usage (CLI):
 """
 
 import argparse
+import base64
 import json
 import logging
 import os
@@ -243,6 +244,25 @@ SYSTEM_PROMPT = """你是一个高效、严谨的任务执行 Agent，运行在�
 # Core run_task function
 # ---------------------------------------------------------------------------
 
+def _image_data_url(image_b64: str) -> str:
+    mime = "image/jpeg"
+    try:
+        raw = base64.b64decode(image_b64, validate=False)
+    except Exception:  # noqa: BLE001
+        raw = b""
+
+    if raw.startswith(b"\x89PNG"):
+        mime = "image/png"
+    elif raw.startswith(b"GIF8"):
+        mime = "image/gif"
+    elif raw.startswith(b"RIFF") and raw[8:12] == b"WEBP":
+        mime = "image/webp"
+    elif raw.startswith(b"\xff\xd8\xff"):
+        mime = "image/jpeg"
+
+    return f"data:{mime};base64,{image_b64}"
+
+
 def run_task(
     task: dict,
     max_steps: int = MAX_STEPS,
@@ -282,10 +302,19 @@ def run_task(
     traj.write(Role.SYSTEM, SYSTEM_PROMPT, step_id=0)
 
     # Build user message (optionally include image)
-    if image_b64 and image_url:
+    user_text = instruction
+    if image_url:
+        user_text = f"{instruction}\n输入图像的在线链接：{image_url}"
+
+    if image_b64:
         user_content = [
-            {"type": "text",      "text": instruction + "输入图像的在线链接：" + image_url},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
+            {"type": "text", "text": user_text},
+            {"type": "image_url", "image_url": {"url": _image_data_url(image_b64)}},
+        ]
+    elif image_url:
+        user_content = [
+            {"type": "text", "text": user_text},
+            {"type": "image_url", "image_url": {"url": image_url}},
         ]
     else:
         user_content = instruction

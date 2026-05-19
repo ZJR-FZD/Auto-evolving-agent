@@ -57,16 +57,4 @@ python -m sglang.launch_server \
 --served-model-name Qwen3.5-9B \
 --enforce-disable-flashinfer-allreduce-fusion \
 --disable-custom-all-reduce
-
-conda activate pegp
-python harness-sii/eval_simplevqa.py \
---data-file simpleVQA/SimpleVQA.jsonl \
---data-root simpleVQA \
---llm-url http://127.0.0.1:8000/v1 \
---model Qwen3.5-9B \
---max-steps 20 \
---concurrency 2 \
---result-format minimal \
---overwrite
-
-目前已知的问题：
+然后运行评测程序
