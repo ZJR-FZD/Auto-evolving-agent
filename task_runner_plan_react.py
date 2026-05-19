@@ -47,7 +47,7 @@ logger = logging.getLogger("harness.plan_react")
 # ---------------------------------------------------------------------------
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://127.0.0.1:8000/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "qwen-3.5")
-MAX_STEPS    = int(os.getenv("MAX_STEPS", "25"))
+MAX_STEPS    = int(os.getenv("MAX_STEPS", "20"))
 MAX_TOKENS   = int(os.getenv("MAX_TOKENS", "16000"))
 DISABLE_TOOLS = os.getenv("DISABLE_TOOLS", "0") == "1"
 

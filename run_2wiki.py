@@ -30,7 +30,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("eval.2wiki")
 
-DATASET_PATH = "/inspire/qb-ilm2/project/26summer-camp-01/26210094/datasets/2wiki.jsonl"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATASET_PATH = os.path.join(SCRIPT_DIR, "../datasets/2wiki.jsonl")
 
 
 def load_dataset(path: str) -> list[dict]:

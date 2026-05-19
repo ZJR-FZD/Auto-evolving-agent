@@ -31,8 +31,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger("eval.simpleqa")
 
-DATASET_PATH = "/inspire/qb-ilm2/project/26summer-camp-01/26210094/datasets/simpleVQA/SimpleVQA.jsonl"
-IMAGE_DIR = "/inspire/qb-ilm2/project/26summer-camp-01/26210094/datasets/simpleVQA"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATASET_PATH = os.path.join(SCRIPT_DIR, "../datasets/simpleVQA/SimpleVQA.jsonl")
+IMAGE_DIR = os.path.join(SCRIPT_DIR, "../datasets/simpleVQA")
 
 
 def load_dataset(path: str) -> list[dict]:

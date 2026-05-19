@@ -35,7 +35,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("eval.benchmark")
 
-DATASET_PATH = "/inspire/qb-ilm2/project/26summer-camp-01/26210094/datasets/benchmark.csv"
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+DATASET_PATH = os.path.join(SCRIPT_DIR, "../datasets/benchmark.csv")
 
 
 def load_benchmark(path: str) -> list[dict]:
