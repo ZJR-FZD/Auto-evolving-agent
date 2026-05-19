@@ -44,7 +44,7 @@ logger = logging.getLogger("harness.tools.search")
 # Config
 # ---------------------------------------------------------------------------
 # Proxy mode (recommended for the air-gapped GPU host).
-SEARCH_PROXY_URL    = os.getenv("SEARCH_PROXY_URL", "https://nat2-notebook-inspire.sii.edu.cn/ws-7c23bd1d-9bae-4238-803a-737a35480e18/project-39fbffc7-dcca-4fb4-b43a-2f69f72f7e52/user-d7980cee-ce7d-4b08-a7c6-362b3b416af7/vscode/c2020a53-a173-4691-9875-61f34a35a051/a0378fb5-0085-492a-9833-d811d0fa1d01/proxy/1227/").rstrip("/")
+SEARCH_PROXY_URL    = os.getenv("SEARCH_PROXY_URL", "https://nat2-notebook-inspire.sii.edu.cn/ws-7c23bd1d-9bae-4238-803a-737a35480e18/project-39fbffc7-dcca-4fb4-b43a-2f69f72f7e52/user-d7980cee-ce7d-4b08-a7c6-362b3b416af7/vscode/c2020a53-a173-4691-9875-61f34a35a051/e7c3ebcb-1fbb-48ad-8d41-1e770ada0c00/proxy/1227/").rstrip("/")
 SEARCH_PROXY_TOKEN  = os.getenv("SEARCH_PROXY_TOKEN", "") or os.getenv(
     "PROXY_API_TOKEN", ""
 )

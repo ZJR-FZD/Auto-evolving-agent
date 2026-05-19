@@ -1,2 +1,6 @@
 claude
 codex
+simpleVQA
+harness-sii/outputs/
+harness-sii/trajectories_simplevqa/
+harness-sii/__pycache__/
