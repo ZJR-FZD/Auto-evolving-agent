@@ -23,7 +23,6 @@ from typing import Any
 
 from openai import OpenAI
 
-from answer_utils import clean_pred_for_submit
 from roles import Role
 from trajectory import Trajectory
 from task_runner_plan_react import (
@@ -387,7 +386,7 @@ def run_task(
 
     summary = traj.summary()
     raw_answer = final_answer
-    cleaned_answer = clean_pred_for_submit(raw_answer, instruction)
+    cleaned_answer = raw_answer
     return {
         "task_id": task_id,
         "answer": cleaned_answer,
