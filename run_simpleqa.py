@@ -67,7 +67,7 @@ def run_eval(
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(traj_dir, exist_ok=True)
 
-    progress_path = os.path.join(output_dir, f"group_{group_id}_simpleqa_progress.jsonl")
+    progress_path = os.path.join(output_dir, f"group_{group_id}_simpleqa_progress_{timestamp}.jsonl")
 
     result_path = os.path.join(output_dir, f"group_{group_id}_simpleqa_{timestamp}.jsonl")
     traj_path = os.path.join(output_dir, f"group_{group_id}_simpleqa_traj_{timestamp}.jsonl")

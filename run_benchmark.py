@@ -69,7 +69,7 @@ def run_benchmark(
     os.makedirs(output_dir, exist_ok=True)
     os.makedirs(traj_dir, exist_ok=True)
 
-    progress_path = os.path.join(output_dir, f"group_{group_id}_benchmark_progress.jsonl")
+    progress_path = os.path.join(output_dir, f"group_{group_id}_benchmark_progress_{timestamp}.jsonl")
 
     result_path = os.path.join(output_dir, f"group_{group_id}_benchmark_{timestamp}.jsonl")
     traj_path = os.path.join(output_dir, f"group_{group_id}_benchmark_traj_{timestamp}.jsonl")
