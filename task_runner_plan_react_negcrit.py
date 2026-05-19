@@ -97,6 +97,7 @@ def _safe_json_load(text: str) -> dict[str, Any] | None:
     raw = (text or "").strip()
     if not raw:
         return None
+    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw, flags=re.IGNORECASE | re.DOTALL).strip()
     try:
         val = json.loads(raw)
         if isinstance(val, dict):
@@ -115,14 +116,33 @@ def _safe_json_load(text: str) -> dict[str, Any] | None:
     return None
 
 
+def _parse_judgment_from_text(text: str) -> tuple[str, str] | None:
+    low = (text or "").lower()
+    if not low:
+        return None
+    if "judgment" in low and "bad" in low and "good" not in low:
+        return "BAD", "critic_text_bad"
+    if "judgment" in low and "good" in low and "bad" not in low:
+        return "GOOD", "critic_text_good"
+    if re.search(r"\bverdict\s*:\s*bad\b", low):
+        return "BAD", "critic_text_bad"
+    if re.search(r"\bverdict\s*:\s*good\b", low):
+        return "GOOD", "critic_text_good"
+    if re.search(r"\bbad\b", low) and not re.search(r"\bgood\b", low):
+        return "BAD", "critic_text_bad"
+    if re.search(r"\bgood\b", low) and not re.search(r"\bbad\b", low):
+        return "GOOD", "critic_text_good"
+    return None
+
+
 def _normalize_neg_judgment(obj: dict[str, Any] | None) -> tuple[str, str]:
     if not obj:
-        return "GOOD", "critic_parse_failed"
+        return "BAD", "critic_parse_failed_safe_bad"
     judgment = str(obj.get("judgment", "")).strip().upper()
     reason = str(obj.get("reason_short", "")).strip()
     if judgment not in {"GOOD", "BAD"}:
-        judgment = "GOOD"
-        reason = "invalid_judgment_fallback"
+        judgment = "BAD"
+        reason = "invalid_judgment_safe_bad"
     return judgment, reason or "no_reason"
 
 
@@ -159,13 +179,24 @@ def _run_negative_critic(
             temperature=0.0,
             max_tokens=220,
             timeout=NEG_CRITIC_TIMEOUT,
+            extra_body={"enable_thinking": False},
         )
-        content = resp.choices[0].message.content or ""
+        msg = resp.choices[0].message
+        content = msg.content or ""
+        reasoning_content = getattr(msg, "reasoning_content", "") or ""
     except Exception as exc:
         logger.warning("Negative critic call failed: %s", exc)
-        return "GOOD", "critic_unavailable"
+        return "BAD", "critic_unavailable_safe_bad"
     obj = _safe_json_load(content)
-    return _normalize_neg_judgment(obj)
+    if obj:
+        return _normalize_neg_judgment(obj)
+    obj = _safe_json_load(reasoning_content)
+    if obj:
+        return _normalize_neg_judgment(obj)
+    parsed = _parse_judgment_from_text(content) or _parse_judgment_from_text(reasoning_content)
+    if parsed:
+        return parsed
+    return "BAD", "critic_parse_failed_safe_bad"
 
 
 def _forced_self_reflection_prompt(reason_short: str) -> str:
