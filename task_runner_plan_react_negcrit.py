@@ -43,7 +43,7 @@ logger = logging.getLogger("harness.plan_react_negcrit")
 
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "http://127.0.0.1:8000/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "Qwen3.5-9B")
-MAX_STEPS = int(os.getenv("MAX_STEPS", "15"))
+MAX_STEPS = int(os.getenv("MAX_STEPS", "20"))
 MAX_TOKENS = int(os.getenv("MAX_TOKENS", "16000"))
 DISABLE_TOOLS = os.getenv("DISABLE_TOOLS", "0") == "1"
 
@@ -58,8 +58,8 @@ NEG_CRITIC_TIMEOUT = float(os.getenv("NEG_CRITIC_TIMEOUT", "25"))
 NEG_EVAL_EVERY_STEPS = int(os.getenv("NEG_EVAL_EVERY_STEPS", "3"))
 NEG_EVAL_AFTER_TOOL = os.getenv("NEG_EVAL_AFTER_TOOL", "1") != "0"
 NEG_EVAL_MIN_STEP = int(os.getenv("NEG_EVAL_MIN_STEP", "2"))
-NEG_EVAL_MAX_WINDOW = int(os.getenv("NEG_EVAL_MAX_WINDOW", "10"))
-FORCE_ANSWER_STEP = int(os.getenv("NEG_FORCE_ANSWER_STEP", "13"))
+NEG_EVAL_MAX_WINDOW = int(os.getenv("NEG_EVAL_MAX_WINDOW", "20"))
+FORCE_ANSWER_STEP = int(os.getenv("NEG_FORCE_ANSWER_STEP", "18"))
 
 
 SYSTEM_PROMPT = """你是一个精确的推理搜索 Agent。
@@ -72,17 +72,27 @@ SYSTEM_PROMPT = """你是一个精确的推理搜索 Agent。
 """
 
 
-NEG_CRITIC_SYSTEM_PROMPT = """You are an online NEGATIVE evaluator for an agent trajectory.
+NEG_CRITIC_SYSTEM_PROMPT = """You are an online evaluator for a search agent trajectory.
 
-Hard constraints:
-- Output STRICT JSON only.
-- Allowed schema exactly:
-  {"judgment":"GOOD|BAD","reason_short":"..."}
-- judgment must be either GOOD or BAD.
-- reason_short must be concise and diagnostic.
-- NEVER provide action suggestions, tool suggestions, search keywords, or next steps.
-- NEVER use phrases like "should", "try", "you can", "建议", "应该", "可以去".
-- You are only a brake signal and fault locator.
+Your job: output one JSON object. Nothing else.
+
+Output format (no markdown, no explanation, just raw JSON):
+{"judgment":"GOOD","reason_short":"on track","hint":""}
+or
+{"judgment":"BAD","reason_short":"brief diagnostic","hint":"directional hint"}
+
+Rules:
+- GOOD = agent is making progress toward the answer with a viable strategy. Set hint to empty string.
+- BAD = agent is stuck, looping, or pursuing a dead-end strategy.
+- reason_short: max 15 words, diagnostic only.
+- hint (only when BAD): a directional nudge telling the agent WHERE to look or WHAT to focus on. Examples:
+  - "look at the book title mentioned on the page you already visited"
+  - "try identifying the teams first instead of searching for the minute"
+  - "the answer might be in the Wikipedia page you already loaded"
+  - "search for the other team's name changes instead"
+- hint must NOT contain the actual answer, specific search queries, or tool call suggestions.
+- hint should point to overlooked evidence or suggest a reasoning angle shift.
+- Output the JSON immediately. Do not explain your reasoning in the output.
 """
 
 
@@ -135,24 +145,27 @@ def _parse_judgment_from_text(text: str) -> tuple[str, str] | None:
     return None
 
 
-def _normalize_neg_judgment(obj: dict[str, Any] | None) -> tuple[str, str]:
+def _normalize_neg_judgment(obj: dict[str, Any] | None) -> tuple[str, str, str]:
     if not obj:
-        return "BAD", "critic_parse_failed_safe_bad"
+        return "BAD", "critic_parse_failed_safe_bad", ""
     judgment = str(obj.get("judgment", "")).strip().upper()
     reason = str(obj.get("reason_short", "")).strip()
+    hint = str(obj.get("hint", "")).strip()
     if judgment not in {"GOOD", "BAD"}:
         judgment = "BAD"
         reason = "invalid_judgment_safe_bad"
-    return judgment, reason or "no_reason"
+    return judgment, reason or "no_reason", hint
 
 
 def _recent_trajectory_window(entries: list[dict[str, Any]], limit: int) -> list[dict[str, str]]:
     rows = []
     for e in entries[-limit:]:
         role = str(e.get("role", ""))
-        content = _clip(str(e.get("content", "")), 500)
-        if not content:
+        raw_content = str(e.get("content", ""))
+        if not raw_content:
             continue
+        clip_limit = 1500 if role == "tool" else 500
+        content = _clip(raw_content, clip_limit)
         rows.append({"role": role, "content": content})
     return rows
 
@@ -162,7 +175,7 @@ def _run_negative_critic(
     instruction: str,
     task_id: str,
     entries: list[dict[str, Any]],
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     payload = {
         "task_id": task_id,
         "instruction": _clip(instruction, 500),
@@ -177,16 +190,16 @@ def _run_negative_critic(
                 {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
             ],
             temperature=0.0,
-            max_tokens=220,
+            max_tokens=800,
             timeout=NEG_CRITIC_TIMEOUT,
-            extra_body={"enable_thinking": False},
+            extra_body={"enable_thinking": True, "thinking_budget": 400},
         )
         msg = resp.choices[0].message
         content = msg.content or ""
         reasoning_content = getattr(msg, "reasoning_content", "") or ""
     except Exception as exc:
         logger.warning("Negative critic call failed: %s", exc)
-        return "BAD", "critic_unavailable_safe_bad"
+        return "BAD", "critic_unavailable_safe_bad", ""
     obj = _safe_json_load(content)
     if obj:
         return _normalize_neg_judgment(obj)
@@ -195,15 +208,24 @@ def _run_negative_critic(
         return _normalize_neg_judgment(obj)
     parsed = _parse_judgment_from_text(content) or _parse_judgment_from_text(reasoning_content)
     if parsed:
-        return parsed
-    return "BAD", "critic_parse_failed_safe_bad"
+        return parsed[0], parsed[1], ""
+    logger.warning(
+        "Critic parse failed. content=%r reasoning=%r",
+        content[:300] if content else "",
+        reasoning_content[:300] if reasoning_content else "",
+    )
+    return "BAD", "critic_parse_failed_safe_bad", ""
 
 
-def _forced_self_reflection_prompt(reason_short: str) -> str:
-    return (
+def _forced_self_reflection_prompt(reason_short: str, hint: str = "") -> str:
+    base = (
         "[FORCED_REFLECTION]\n"
         "External evaluator judged your current trajectory as BAD.\n"
         f"Reason: {reason_short}\n"
+    )
+    if hint:
+        base += f"Hint: {hint}\n"
+    base += (
         "You MUST pause the current strategy and self-correct NOW.\n"
         "Rules:\n"
         "1) First output a short internal correction note (why current line failed).\n"
@@ -211,6 +233,27 @@ def _forced_self_reflection_prompt(reason_short: str) -> str:
         "3) Then continue with exactly one concrete next action (tool call or final answer).\n"
         "4) Do not repeat the previous near-duplicate query direction."
     )
+    return base
+
+
+DUPLICATE_QUERY_THRESHOLD = float(os.getenv("DUPLICATE_QUERY_THRESHOLD", "0.6"))
+DUPLICATE_QUERY_GRACE = int(os.getenv("DUPLICATE_QUERY_GRACE", "3"))
+DUPLICATE_QUERY_THRESHOLD_EARLY = float(os.getenv("DUPLICATE_QUERY_THRESHOLD_EARLY", "0.85"))
+
+
+def _query_overlap(new_kw: set[str], recent: list[set[str]]) -> float:
+    """Return max Jaccard overlap between new_kw and any recent query."""
+    if not new_kw or not recent:
+        return 0.0
+    best = 0.0
+    for prev in recent:
+        if not prev:
+            continue
+        inter = len(new_kw & prev)
+        union = len(new_kw | prev)
+        if union > 0:
+            best = max(best, inter / union)
+    return best
 
 
 def run_task(
@@ -250,19 +293,26 @@ def run_task(
     recent_queries: list[set] = []
     low_signal_streak = 0
     pending_forced_reflection: str | None = None
+    pending_forced_hint: str = ""
 
     for step in range(1, max_steps + 1):
         logger.info("--- step %d/%d ---", step, max_steps)
 
         if pending_forced_reflection:
-            traj.write(Role.USER, _forced_self_reflection_prompt(pending_forced_reflection), step_id=step)
+            traj.write(Role.USER, _forced_self_reflection_prompt(pending_forced_reflection, pending_forced_hint), step_id=step)
             pending_forced_reflection = None
+            pending_forced_hint = ""
 
         if step >= FORCE_ANSWER_STEP and not force_answer_injected:
             traj.write(
                 Role.USER,
-                "[SYSTEM] Step budget nearly exhausted. If evidence is enough, output <answer>...</answer> now. "
-                "If evidence is weak, output <answer confidence=\"low\">...</answer>. Avoid further wandering search.",
+                "[SYSTEM] Step budget nearly exhausted. You MUST output <answer>...</answer> NOW.\n"
+                "Rules:\n"
+                "1) First, list KEY FINDINGS you gathered (entities, dates, names, URLs visited).\n"
+                "2) Then reason: based on these findings, what is the most likely answer?\n"
+                "3) Output your best guess inside <answer>...</answer> even if uncertain.\n"
+                "4) A wrong guess is better than no answer. Use what you found to deduce.\n"
+                "5) Do NOT search again. Do NOT output tool calls. Answer NOW.",
                 step_id=step,
             )
             force_answer_injected = True
@@ -290,11 +340,18 @@ def run_task(
         content = msg.content or ""
         reasoning_content = getattr(msg, "reasoning_content", "") or ""
         tool_calls = None if DISABLE_TOOLS else msg.tool_calls
-        if not tool_calls and not content and reasoning_content:
-            leaked = parse_leaked_tool_calls(reasoning_content)
-            if leaked:
-                tool_calls = leaked
-                logger.info("Recovered %d leaked tool call(s)", len(leaked))
+        if not force_answer_injected:
+            if not tool_calls and not content and reasoning_content:
+                leaked = parse_leaked_tool_calls(reasoning_content)
+                if leaked:
+                    tool_calls = leaked
+                    logger.info("Recovered %d leaked tool call(s) from reasoning", len(leaked))
+            if not tool_calls and content:
+                leaked = parse_leaked_tool_calls(content)
+                if leaked:
+                    tool_calls = leaked
+                    content = ""
+                    logger.info("Recovered %d leaked tool call(s) from content", len(leaked))
 
         extra = {}
         if tool_calls:
@@ -315,9 +372,35 @@ def run_task(
             continue
 
         if step == max_steps and tool_calls:
-            forced = '<answer confidence="low">Unable to determine from available evidence</answer>'
-            traj.write(Role.ASSISTANT, forced, step_id=step)
-            final_answer = extract_answer(forced)
+            traj.write(
+                Role.USER,
+                "[SYSTEM] FINAL STEP. You MUST answer NOW based on everything you found.\n"
+                "List your key findings, reason about the most likely answer, "
+                "and output <answer>YOUR BEST GUESS</answer>. No more tool calls.",
+                step_id=step,
+            )
+            try:
+                final_resp = main_client.chat.completions.create(
+                    model=model_name,
+                    messages=traj.to_messages(),
+                    max_tokens=MAX_TOKENS,
+                    temperature=0.3,
+                    extra_body={"enable_thinking": True},
+                )
+                final_content = final_resp.choices[0].message.content or ""
+                final_reasoning = getattr(final_resp.choices[0].message, "reasoning_content", "") or ""
+                extra_final = {}
+                if final_reasoning:
+                    extra_final["reasoning_content"] = final_reasoning
+                traj.write(Role.ASSISTANT, final_content, step_id=step, extra=extra_final or None)
+                final_answer = extract_answer(final_content)
+            except Exception as exc:
+                logger.error("Final answer LLM call failed: %s", exc)
+                final_answer = ""
+            if not final_answer:
+                forced = '<answer confidence="low">Unable to determine from available evidence</answer>'
+                traj.write(Role.ASSISTANT, forced, step_id=step)
+                final_answer = extract_answer(forced)
             break
 
         def _exec_one_tool(tc):
@@ -347,23 +430,61 @@ def run_task(
             return tc_id, fn_name, fn_args, tool_result
 
         pending = tool_calls or []
-        if len(pending) > 1:
-            with ThreadPoolExecutor(max_workers=min(len(pending), 4)) as pool:
-                futures = [pool.submit(_exec_one_tool, tc) for tc in pending]
+        blocked_tcs: list[tuple[str, str, dict, str]] = []
+        actual_pending: list = []
+        for tc in pending:
+            if hasattr(tc, "function"):
+                fn_name = tc.function.name
+                fn_args_str = tc.function.arguments
+                tc_id = tc.id
+            else:
+                fn_name = tc["function"]["name"]
+                fn_args_str = tc["function"]["arguments"]
+                tc_id = tc["id"]
+            if fn_name == "search_text":
+                try:
+                    _args = json.loads(fn_args_str)
+                except Exception:
+                    _args = {}
+                q = str(_args.get("query", "")).lower()
+                kw = {w for w in re.sub(r'["\'\(\)]', " ", q).split() if len(w) > 2}
+                threshold = (
+                    DUPLICATE_QUERY_THRESHOLD_EARLY
+                    if len(recent_queries) < DUPLICATE_QUERY_GRACE
+                    else DUPLICATE_QUERY_THRESHOLD
+                )
+                overlap = _query_overlap(kw, recent_queries)
+                if overlap >= threshold:
+                    logger.info("BLOCKED duplicate query (overlap=%.2f): %s", overlap, q)
+                    blocked_tcs.append((
+                        tc_id, fn_name, _args,
+                        "[HARNESS] BLOCKED: Your query is too similar to a previous one "
+                        f"(overlap={overlap:.0%}). You MUST use completely different keywords "
+                        "and a different reasoning angle. Do NOT rephrase the same concept.",
+                    ))
+                    continue
+            actual_pending.append(tc)
+
+        if len(actual_pending) > 1:
+            with ThreadPoolExecutor(max_workers=min(len(actual_pending), 4)) as pool:
+                futures = [pool.submit(_exec_one_tool, tc) for tc in actual_pending]
                 results = [f.result() for f in futures]
         else:
-            results = [_exec_one_tool(tc) for tc in pending]
+            results = [_exec_one_tool(tc) for tc in actual_pending]
+        results = blocked_tcs + results
 
         tool_executed_this_step = False
         for tc_id, fn_name, fn_args, tool_result in results:
             tool_executed_this_step = True
-            if fn_name == "search_text":
+            if fn_name == "search_text" and not tool_result.startswith("[HARNESS] BLOCKED"):
                 tool_result, has_signal = filter_garbage_results(tool_result)
                 low_signal_streak = 0 if has_signal else (low_signal_streak + 1)
                 q = str(fn_args.get("query", "")).lower()
                 kw = {w for w in re.sub(r'["\'\(\)]', " ", q).split() if len(w) > 2}
                 if kw:
                     recent_queries.append(kw)
+            elif fn_name == "search_text":
+                low_signal_streak += 1
             traj.write(
                 Role.TOOL,
                 tool_result,
@@ -382,7 +503,7 @@ def run_task(
         )
         if should_eval:
             entries = traj.read_all()
-            judgment, reason_short = _run_negative_critic(
+            judgment, reason_short, hint = _run_negative_critic(
                 critic_client=critic_client,
                 instruction=instruction,
                 task_id=task_id,
@@ -394,9 +515,12 @@ def run_task(
                 step_id=step,
                 extra={"neg_critic": True, "judgment": judgment},
             )
-            logger.info("NEG_CRITIC judgment=%s reason=%s", judgment, reason_short)
-            if judgment == "BAD":
+            logger.info("NEG_CRITIC judgment=%s reason=%s hint=%s", judgment, reason_short, hint)
+            if judgment == "BAD" and not reason_short.startswith(
+                ("critic_parse_failed", "critic_unavailable")
+            ):
                 pending_forced_reflection = reason_short
+                pending_forced_hint = hint
 
         if low_signal_streak >= 2:
             traj.write(
