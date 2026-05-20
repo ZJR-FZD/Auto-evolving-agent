@@ -4,8 +4,12 @@ __pycache__/
 *.log
 # *.jsonl
 results/
+trajectories/
+logs/
 outputs/
 checkpoints/
 *.pt
 *.pth
 *.ckpt
+.ipynb_checkpoints/
+.DS_Store

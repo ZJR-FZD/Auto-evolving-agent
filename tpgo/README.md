@@ -11,6 +11,9 @@ agent project. It does not change the original runner by default.
 - Reflection memory extraction from failed trajectories.
 - Mermaid trajectory graphs for debugging and presentation.
 - Initial Textual Parameter Graph (TPG) config for the current ReAct harness.
+- Soft online constraint guidance used by `plan_react_negcrit`: constraint
+  ledger prompting, critic alignment rules, reflection additions, answer-role
+  checks, and duplicate-query pivot handling.
 - A small benchmark ablation runner with hard timeouts.
 
 ## Quick Commands

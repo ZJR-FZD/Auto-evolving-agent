@@ -32,6 +32,22 @@ from task_runner_plan_react import (
     filter_garbage_results,
     parse_leaked_tool_calls,
 )
+from tpgo.soft_constraints import (
+    FORCE_ANSWER_APPEND,
+    FORCED_REFLECTION_APPEND,
+    NEG_CRITIC_ALIGNMENT_APPEND,
+    QUERY_STRATEGY_PROMPT,
+    SOFT_CONSTRAINT_SYSTEM_APPEND,
+    build_overstuffed_query_feedback,
+    build_soft_constraint_reflection,
+    find_soft_constraint_conflicts,
+    has_meaningful_query_pivot,
+    is_overstuffed_query,
+)
+from tpgo.search_templates import build_search_queries
+from tpgo.task_router import classify_question
+from tpgo.answer_fallback import best_effort_answer, is_bad_answer
+from tpgo.distilled_strategy import distilled_strategy_prompt
 
 
 logging.basicConfig(
@@ -60,6 +76,11 @@ NEG_EVAL_AFTER_TOOL = os.getenv("NEG_EVAL_AFTER_TOOL", "1") != "0"
 NEG_EVAL_MIN_STEP = int(os.getenv("NEG_EVAL_MIN_STEP", "2"))
 NEG_EVAL_MAX_WINDOW = int(os.getenv("NEG_EVAL_MAX_WINDOW", "20"))
 FORCE_ANSWER_STEP = int(os.getenv("NEG_FORCE_ANSWER_STEP", "18"))
+MAX_SEARCH_CALLS = int(os.getenv("MAX_SEARCH_CALLS", "12"))
+MAX_BLOCKED_SEARCHES = int(os.getenv("MAX_BLOCKED_SEARCHES", "5"))
+BAD_STREAK_REPLAN = int(os.getenv("BAD_STREAK_REPLAN", "3"))
+ROUTE_REPLAN_COOLDOWN = int(os.getenv("ROUTE_REPLAN_COOLDOWN", "3"))
+TPGO_DISTILLED_STRATEGY = os.getenv("TPGO_DISTILLED_STRATEGY", "0") == "1"
 
 
 SYSTEM_PROMPT = """你是一个精确的推理搜索 Agent。
@@ -69,7 +90,7 @@ SYSTEM_PROMPT = """你是一个精确的推理搜索 Agent。
 2) 使用工具时必须是标准 function/tool_calls，不要在文本中伪造工具调用。
 3) 遇到失败信号（空结果、403、captcha、噪音域名）要及时换线索，不要重复同义查询。
 4) 最终答案必须使用 <answer>...</answer>。
-"""
+""" + SOFT_CONSTRAINT_SYSTEM_APPEND
 
 
 NEG_CRITIC_SYSTEM_PROMPT = """You are an online evaluator for a search agent trajectory.
@@ -93,7 +114,7 @@ Rules:
 - hint must NOT contain the actual answer, specific search queries, or tool call suggestions.
 - hint should point to overlooked evidence or suggest a reasoning angle shift.
 - Output the JSON immediately. Do not explain your reasoning in the output.
-"""
+""" + NEG_CRITIC_ALIGNMENT_APPEND
 
 
 def _clip(text: str, limit: int = 400) -> str:
@@ -178,7 +199,7 @@ def _run_negative_critic(
 ) -> tuple[str, str, str]:
     payload = {
         "task_id": task_id,
-        "instruction": _clip(instruction, 500),
+        "instruction": _clip(instruction, 1600),
         "recent_trajectory": _recent_trajectory_window(entries, NEG_EVAL_MAX_WINDOW),
         "note": "Judge only if current strategy is on-track or off-track. No actions.",
     }
@@ -233,7 +254,138 @@ def _forced_self_reflection_prompt(reason_short: str, hint: str = "") -> str:
         "3) Then continue with exactly one concrete next action (tool call or final answer).\n"
         "4) Do not repeat the previous near-duplicate query direction."
     )
+    base += FORCED_REFLECTION_APPEND
     return base
+
+
+def _route_replan_prompt(route, route_queries: list[str], reason: str) -> str:
+    return (
+        "[SYSTEM][ROUTE_REPLAN]\n"
+        f"Reason: {reason}\n"
+        "Your recent trajectory is not converging. Stop free-form rewording.\n"
+        f"task_type: {route.task_type}\n"
+        f"answer_format_hint: {route.answer_format_hint}\n"
+        f"risk_tags: {json.dumps(route.risk_tags, ensure_ascii=False)}\n"
+        f"preferred_sources: {json.dumps(route.preferred_sources, ensure_ascii=False)}\n"
+        f"candidate_query_templates: {json.dumps(route_queries, ensure_ascii=False)}\n"
+        "Rules for the next action:\n"
+        "1) Choose exactly one route query template, or make one short query with the same stage/pattern.\n"
+        "2) Do not combine multiple stages in one query.\n"
+        "3) If you already have a named candidate, verify it with one missing hard constraint.\n"
+        "4) If you do not have a named candidate, use an anchor-discovery query only.\n"
+        "5) Prefer fetch=false unless the query contains a named candidate."
+    )
+
+
+def _search_budget_prompt(search_calls: int) -> str:
+    return (
+        "[SYSTEM][SEARCH_BUDGET]\n"
+        f"You have already used {search_calls} search calls. Stop searching now.\n"
+        "Use the best supported candidate from retrieved evidence. If evidence is weak, output "
+        "<answer confidence=\"low\">one plausible answer candidate</answer>. "
+        "Do not output Unable/Unknown/insufficient evidence as the answer. "
+        "Do not include reasoning, notes, or uncertainty explanations. Do not call tools again."
+    )
+
+
+def _blocked_budget_prompt(blocked_searches: int) -> str:
+    """Prompt the model to stop after repeated blocked duplicate/low-value searches."""
+    return (
+        "[SYSTEM][BLOCKED_SEARCH_BUDGET]\n"
+        f"{blocked_searches} searches were blocked or judged unproductive. Stop searching now.\n"
+        "Output exactly one short plausible answer candidate in <answer>...</answer>. "
+        "Do not include key findings, correction notes, plans, or uncertainty explanations."
+    )
+
+
+def _finalize_answer(
+    traj: Trajectory,
+    route,
+    answer: str,
+    step_id: int,
+    reason: str,
+) -> str:
+    if not is_bad_answer(answer):
+        return answer
+    fallback = best_effort_answer(traj.read_all(), route)
+    final = f'<answer confidence="low">{fallback}</answer>'
+    traj.write(
+        Role.ASSISTANT,
+        final,
+        step_id=step_id,
+        extra={"fallback_answer": True, "fallback_reason": reason},
+    )
+    return extract_answer(final)
+
+
+def _normalize_submission_answer(answer: str, traj: Trajectory, route) -> str:
+    """Return a concise answer string for CSV/JSON submission fields."""
+    text = extract_answer(str(answer or "")).strip()
+    text = re.sub(r"^\[LOW_CONFIDENCE\]\s*", "", text, flags=re.I).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+
+    if is_bad_answer(text) or _looks_like_reasoning(text) or _looks_like_bad_span(text):
+        text = best_effort_answer(traj.read_all(), route).strip()
+        text = re.sub(r"\s+", " ", text).strip()
+
+    return text
+
+
+def _looks_like_reasoning(text: str) -> bool:
+    """Detect accidental ReAct/reflection prose instead of an answer span."""
+    s = (text or "").strip()
+    low = s.lower()
+    if not s:
+        return True
+    if len(s) > 180:
+        return True
+    if "\n" in s:
+        return True
+    reasoning_markers = (
+        "correction note",
+        "internal correction",
+        "revised plan",
+        "constraint ledger",
+        "next action",
+        "i need to",
+        "let me search",
+        "my previous",
+        "based on my search results",
+        "unable to verify",
+        "insufficient information",
+        "not definitively confirmed",
+        "not confidently identify",
+        "cannot be confirmed",
+        "not confirmed",
+    )
+    return any(marker in low for marker in reasoning_markers)
+
+
+def _looks_like_bad_span(text: str) -> bool:
+    """Detect short boilerplate spans that are unlikely to be valid answers."""
+    s = (text or "").strip()
+    low = s.lower()
+    if not s:
+        return True
+    if low in {
+        "in",
+        "the",
+        "unknown",
+        "uncertain",
+        "none",
+        "n/a",
+        "our founder",
+        "read more",
+        "learn more",
+        "internal correction",
+        "correction note",
+        "key findings",
+        "next action",
+    }:
+        return True
+    if len(s) <= 2 and not s.isdigit():
+        return True
+    return False
 
 
 DUPLICATE_QUERY_THRESHOLD = float(os.getenv("DUPLICATE_QUERY_THRESHOLD", "0.6"))
@@ -272,6 +424,8 @@ def run_task(
     traj = Trajectory(task_id, output_dir=trajectory_dir)
     main_client = OpenAI(base_url=llm_base_url, api_key="EMPTY")
     critic_client = OpenAI(base_url=NEG_CRITIC_BASE_URL, api_key=NEG_CRITIC_API_KEY or "EMPTY")
+    route = classify_question(instruction)
+    route_queries = build_search_queries(instruction, route, max_queries=5)
 
     traj.write(Role.SYSTEM, SYSTEM_PROMPT, step_id=0)
     if image_b64 and image_url:
@@ -287,11 +441,32 @@ def run_task(
     else:
         user_content = instruction
     traj.write(Role.USER, user_content, step_id=0)
+    traj.write(
+        Role.USER,
+        "[SYSTEM][TASK_ROUTE]\n"
+        f"task_type: {route.task_type}\n"
+        f"confidence: {route.confidence}\n"
+        f"search_keywords: {json.dumps(route.search_keywords, ensure_ascii=False)}\n"
+        f"preferred_sources: {json.dumps(route.preferred_sources, ensure_ascii=False)}\n"
+        f"risk_tags: {json.dumps(route.risk_tags, ensure_ascii=False)}\n"
+        f"answer_format_hint: {route.answer_format_hint}\n"
+        f"query_templates: {json.dumps(route_queries, ensure_ascii=False)}\n"
+        "Use this route only as search guidance. Do not answer from it.",
+        step_id=0,
+        extra={"task_route": route.__dict__, "route_queries": route_queries},
+    )
+    traj.write(Role.USER, QUERY_STRATEGY_PROMPT, step_id=0)
+    if TPGO_DISTILLED_STRATEGY:
+        traj.write(Role.USER, distilled_strategy_prompt(), step_id=0)
 
     final_answer = ""
     force_answer_injected = False
     recent_queries: list[set] = []
     low_signal_streak = 0
+    bad_streak = 0
+    blocked_searches = 0
+    search_calls = 0
+    last_route_replan_step = -999
     pending_forced_reflection: str | None = None
     pending_forced_hint: str = ""
 
@@ -303,16 +478,33 @@ def run_task(
             pending_forced_reflection = None
             pending_forced_hint = ""
 
+        if (
+            bad_streak >= BAD_STREAK_REPLAN
+            and step - last_route_replan_step >= ROUTE_REPLAN_COOLDOWN
+            and not force_answer_injected
+        ):
+            traj.write(
+                Role.USER,
+                _route_replan_prompt(route, route_queries, f"{bad_streak} consecutive BAD critic judgments"),
+                step_id=step,
+            )
+            last_route_replan_step = step
+
+        if search_calls >= MAX_SEARCH_CALLS and not force_answer_injected:
+            traj.write(Role.USER, _search_budget_prompt(search_calls), step_id=step)
+            force_answer_injected = True
+
         if step >= FORCE_ANSWER_STEP and not force_answer_injected:
             traj.write(
                 Role.USER,
                 "[SYSTEM] Step budget nearly exhausted. You MUST output <answer>...</answer> NOW.\n"
                 "Rules:\n"
-                "1) First, list KEY FINDINGS you gathered (entities, dates, names, URLs visited).\n"
-                "2) Then reason: based on these findings, what is the most likely answer?\n"
-                "3) Output your best guess inside <answer>...</answer> even if uncertain.\n"
-                "4) A wrong guess is better than no answer. Use what you found to deduce.\n"
-                "5) Do NOT search again. Do NOT output tool calls. Answer NOW.",
+                "1) Do NOT list key findings, reasoning, correction notes, or plans.\n"
+                "2) Do NOT search again. Do NOT output tool calls.\n"
+                "3) Silently check that the span matches the requested answer role/type.\n"
+                "4) Output exactly one short answer span inside <answer>...</answer>.\n"
+                "5) If uncertain, still output the most plausible candidate, not Unable/Unknown."
+                + FORCE_ANSWER_APPEND,
                 step_id=step,
             )
             force_answer_injected = True
@@ -366,6 +558,13 @@ def run_task(
 
         if not tool_calls and content:
             final_answer = extract_answer(content)
+            final_answer = _finalize_answer(
+                traj,
+                route,
+                final_answer,
+                step,
+                "model_final_answer_empty_or_non_answer",
+            )
             logger.info("Task complete at step %d", step)
             break
         if not tool_calls and not content:
@@ -375,8 +574,8 @@ def run_task(
             traj.write(
                 Role.USER,
                 "[SYSTEM] FINAL STEP. You MUST answer NOW based on everything you found.\n"
-                "List your key findings, reason about the most likely answer, "
-                "and output <answer>YOUR BEST GUESS</answer>. No more tool calls.",
+                "No more tool calls. Do not include reasoning or notes. "
+                "Output exactly one short answer span as <answer>YOUR BEST GUESS</answer>.",
                 step_id=step,
             )
             try:
@@ -397,10 +596,13 @@ def run_task(
             except Exception as exc:
                 logger.error("Final answer LLM call failed: %s", exc)
                 final_answer = ""
-            if not final_answer:
-                forced = '<answer confidence="low">Unable to determine from available evidence</answer>'
-                traj.write(Role.ASSISTANT, forced, step_id=step)
-                final_answer = extract_answer(forced)
+            final_answer = _finalize_answer(
+                traj,
+                route,
+                final_answer,
+                step,
+                "final_step_answer_empty_or_non_answer",
+            )
             break
 
         def _exec_one_tool(tc):
@@ -420,6 +622,8 @@ def run_task(
             if fn_name not in TOOL_FN_MAP:
                 return tc_id, fn_name, fn_args, f"[ERROR] Unknown tool: {fn_name}"
             try:
+                if fn_name in {"search_text", "search_image"} and "fetch" not in fn_args:
+                    fn_args["fetch"] = False
                 raw = TOOL_FN_MAP[fn_name](fn_args)
                 if isinstance(raw, (dict, list)):
                     tool_result = json.dumps(raw, ensure_ascii=False)
@@ -446,7 +650,21 @@ def run_task(
                     _args = json.loads(fn_args_str)
                 except Exception:
                     _args = {}
+                if search_calls >= MAX_SEARCH_CALLS:
+                    blocked_tcs.append((
+                        tc_id, fn_name, _args,
+                        _search_budget_prompt(search_calls),
+                    ))
+                    continue
                 q = str(_args.get("query", "")).lower()
+                if is_overstuffed_query(q):
+                    logger.info("BLOCKED overstuffed query: %s", q)
+                    blocked_searches += 1
+                    blocked_tcs.append((
+                        tc_id, fn_name, _args,
+                        build_overstuffed_query_feedback(q),
+                    ))
+                    continue
                 kw = {w for w in re.sub(r'["\'\(\)]', " ", q).split() if len(w) > 2}
                 threshold = (
                     DUPLICATE_QUERY_THRESHOLD_EARLY
@@ -455,14 +673,25 @@ def run_task(
                 )
                 overlap = _query_overlap(kw, recent_queries)
                 if overlap >= threshold:
-                    logger.info("BLOCKED duplicate query (overlap=%.2f): %s", overlap, q)
-                    blocked_tcs.append((
-                        tc_id, fn_name, _args,
-                        "[HARNESS] BLOCKED: Your query is too similar to a previous one "
-                        f"(overlap={overlap:.0%}). You MUST use completely different keywords "
-                        "and a different reasoning angle. Do NOT rephrase the same concept.",
-                    ))
-                    continue
+                    if has_meaningful_query_pivot(kw, recent_queries):
+                        logger.info(
+                            "Allowed near-duplicate query because it adds a soft pivot "
+                            "(overlap=%.2f): %s",
+                            overlap,
+                            q,
+                        )
+                    else:
+                        logger.info("BLOCKED duplicate query (overlap=%.2f): %s", overlap, q)
+                        blocked_searches += 1
+                        blocked_tcs.append((
+                            tc_id, fn_name, _args,
+                            "[HARNESS] BLOCKED: Your query is too similar to a previous one "
+                            f"(overlap={overlap:.0%}). You MUST use completely different keywords "
+                            "or add a new constraint-bearing pivot such as a role, date, count, "
+                            "source type, media clue, or concrete synonym from the question. "
+                            "Do NOT rephrase the same broad topic.",
+                        ))
+                        continue
             actual_pending.append(tc)
 
         if len(actual_pending) > 1:
@@ -476,15 +705,20 @@ def run_task(
         tool_executed_this_step = False
         for tc_id, fn_name, fn_args, tool_result in results:
             tool_executed_this_step = True
+            soft_conflicts: list[str] = []
             if fn_name == "search_text" and not tool_result.startswith("[HARNESS] BLOCKED"):
+                search_calls += 1
                 tool_result, has_signal = filter_garbage_results(tool_result)
                 low_signal_streak = 0 if has_signal else (low_signal_streak + 1)
+                if has_signal:
+                    soft_conflicts = find_soft_constraint_conflicts(instruction, tool_result)
                 q = str(fn_args.get("query", "")).lower()
                 kw = {w for w in re.sub(r'["\'\(\)]', " ", q).split() if len(w) > 2}
                 if kw:
                     recent_queries.append(kw)
             elif fn_name == "search_text":
                 low_signal_streak += 1
+                blocked_searches += 1
             traj.write(
                 Role.TOOL,
                 tool_result,
@@ -492,6 +726,13 @@ def run_task(
                 tool_call_id=tc_id,
                 extra={"fn_name": fn_name, "fn_args": fn_args},
             )
+            if soft_conflicts:
+                traj.write(
+                    Role.USER,
+                    build_soft_constraint_reflection(soft_conflicts),
+                    step_id=step,
+                    extra={"soft_constraint_conflicts": soft_conflicts},
+                )
 
         should_eval = (
             NEG_CRITIC_ENABLED
@@ -513,9 +754,13 @@ def run_task(
                 Role.USER,
                 f"[NEG_CRITIC] {json.dumps({'judgment': judgment, 'reason_short': reason_short}, ensure_ascii=False)}",
                 step_id=step,
-                extra={"neg_critic": True, "judgment": judgment},
+                extra={"neg_critic": True, "judgment": judgment, "hint": hint},
             )
             logger.info("NEG_CRITIC judgment=%s reason=%s hint=%s", judgment, reason_short, hint)
+            if judgment == "BAD":
+                bad_streak += 1
+            else:
+                bad_streak = 0
             if judgment == "BAD" and not reason_short.startswith(
                 ("critic_parse_failed", "critic_unavailable")
             ):
@@ -525,9 +770,19 @@ def run_task(
         if low_signal_streak >= 2:
             traj.write(
                 Role.USER,
-                "[SYSTEM] Recent search results are low-signal/noisy. Switch to a different clue chain now.",
+                _route_replan_prompt(route, route_queries, "recent search results are low-signal/noisy"),
                 step_id=step,
             )
+            last_route_replan_step = step
+
+        if blocked_searches >= MAX_BLOCKED_SEARCHES and not force_answer_injected:
+            traj.write(
+                Role.USER,
+                _blocked_budget_prompt(blocked_searches),
+                step_id=step,
+            )
+            force_answer_injected = True
+            last_route_replan_step = step
 
     else:
         logger.warning("Reached max_steps=%d", max_steps)
@@ -536,12 +791,17 @@ def run_task(
             if e["role"] == "assistant" and e.get("content"):
                 final_answer = extract_answer(e["content"])
                 break
-        if not final_answer:
-            final_answer = "[LOW_CONFIDENCE] Unable to determine from available evidence"
+        final_answer = _finalize_answer(
+            traj,
+            route,
+            final_answer,
+            max_steps,
+            "max_steps_answer_empty_or_non_answer",
+        )
 
     summary = traj.summary()
     raw_answer = final_answer
-    cleaned_answer = raw_answer
+    cleaned_answer = _normalize_submission_answer(raw_answer, traj, route)
     return {
         "task_id": task_id,
         "answer": cleaned_answer,

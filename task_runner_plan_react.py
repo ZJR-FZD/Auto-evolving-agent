@@ -799,10 +799,7 @@ def parse_leaked_tool_calls(reasoning_content: str) -> list[dict] | None:
 # ---------------------------------------------------------------------------
 def extract_answer(content: str) -> str:
     """Extract text from <answer>...</answer> tags, or return full content."""
-    m_low = re.search(r'<answer\s+confidence="low">(.*?)</answer>', content, re.DOTALL)
-    if m_low:
-        return f'[LOW_CONFIDENCE] {m_low.group(1).strip()}'
-    m = re.search(r'<answer>(.*?)</answer>', content, re.DOTALL)
+    m = re.search(r"<answer(?:\s+[^>]*)?>(.*?)</answer>", content, re.DOTALL | re.I)
     if m:
         return m.group(1).strip()
     return content.strip()

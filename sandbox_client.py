@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 # NOTE: same env var name as before so existing deployments keep working.
-SANDBOX_BASE_URL = os.getenv("SANDBOX_BASE_URL", "https://nat2-notebook-inspire.sii.edu.cn/ws-7c23bd1d-9bae-4238-803a-737a35480e18/project-39fbffc7-dcca-4fb4-b43a-2f69f72f7e52/user-37373cef-1fa2-4dbb-ab3e-5c803eb41384/vscode/3c98f013-c5a7-4656-b5d9-37c8b26493ad/8c9601c0-e5ca-4c32-8e55-4aac78cc4e09/proxy/8080/")
+SANDBOX_BASE_URL = os.getenv("SANDBOX_BASE_URL", "https://nat2-notebook-inspire.sii.edu.cn/ws-7c23bd1d-9bae-4238-803a-737a35480e18/project-39fbffc7-dcca-4fb4-b43a-2f69f72f7e52/user-ace1dd51-e7c7-4344-b8af-357b2b1dd83e/vscode/c4d4ad82-399b-4f83-a5a6-d136a17089f3/2c055cc2-a0ca-4d11-933b-114fdf0c8f34/proxy/8080/")
 SANDBOX_API_TOKEN = os.getenv("SANDBOX_API_TOKEN", "") or os.getenv(
     "BROWSER_API_TOKEN", ""
 )
